@@ -1,51 +1,64 @@
 """VisionForge Main Application Entrypoint."""
 
-from contextlib import asynccontextmanager
-
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 
-from visionforge.api.v1.router import api_v1_router
-from visionforge.config import settings
+from visionforge.api.v1.router import router as api_v1_router
+from visionforge.core.config import get_settings
+from visionforge.core.exceptions import register_exception_handlers
+from visionforge.core.lifecycle import lifespan
 from visionforge.core.logging import setup_logging
-
-logger = setup_logging()
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Lifecycle event handler for backend startup and shutdown."""
-    logger.info("Initializing VisionForge Workbench Backend v%s", settings.version)
-    yield
-    logger.info("Shutting down VisionForge Workbench Backend")
+from visionforge.core.middleware import register_middleware
+from visionforge.core.responses import APIResponse, success_response
 
 
-app = FastAPI(
-    title=settings.project_name,
-    version=settings.version,
-    description="VisionForge Computer Vision Workbench Backend API",
-    lifespan=lifespan,
-    docs_url="/docs",
-    redoc_url="/redoc",
-)
+def create_app() -> FastAPI:
+    """Application factory for VisionForge Workbench FastAPI service."""
+    settings = get_settings()
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+    # 1. Initialize Logging System
+    setup_logging(settings.log_level)
 
-app.include_router(api_v1_router, prefix="/api")
+    # 2. Construct FastAPI application instance
+    app = FastAPI(
+        title=settings.project_name,
+        version=settings.version,
+        description="VisionForge Computer Vision Workbench Backend API",
+        lifespan=lifespan,
+        docs_url=settings.docs_url,
+        redoc_url=settings.redoc_url,
+    )
+
+    # 3. Register Middleware (Tracing & CORS)
+    register_middleware(app, settings)
+
+    # 4. Register Centralized Exception Handlers
+    register_exception_handlers(app)
+
+    # 5. Include API Version Routers
+    app.include_router(api_v1_router, prefix="/api")
+
+    # 6. Root Metadata Endpoint
+    @app.get(
+        "/",
+        response_model=APIResponse[dict],
+        summary="Root API Metadata",
+        description="Returns core API metadata and health status links.",
+    )
+    async def root() -> APIResponse[dict]:
+        """Root endpoint returning basic metadata and API version routes."""
+        return success_response(
+            data={
+                "name": settings.project_name,
+                "version": settings.version,
+                "environment": settings.environment.value,
+                "docs": settings.docs_url,
+                "health": "/api/v1/health",
+                "system": "/api/v1/system/info",
+            },
+            message="Welcome to VisionForge Workbench API",
+        )
+
+    return app
 
 
-@app.get("/")
-async def root():
-    """Root endpoint returning basic metadata."""
-    return {
-        "name": settings.project_name,
-        "version": settings.version,
-        "docs": "/docs",
-        "health": "/api/v1/health",
-    }
+app = create_app()

@@ -1,31 +1,62 @@
-"""System diagnostics endpoint."""
+"""System diagnostics API endpoints."""
 
-import platform
-import sys
+from fastapi import APIRouter, Request
+from pydantic import BaseModel, Field
 
-from fastapi import APIRouter
-from pydantic import BaseModel
+from visionforge.core.dependencies import SystemRuntimeDep
+from visionforge.core.responses import APIResponse, success_response
 
 router = APIRouter(tags=["System"])
 
 
-class SystemInfoResponse(BaseModel):
-    """System information response schema."""
+class SystemInfoData(BaseModel):
+    """System information response payload."""
 
-    project: str
-    version: str
-    python_version: str
-    platform: str
-    status: str
+    project: str = Field(description="Project display name")
+    version: str = Field(description="Backend application version")
+    environment: str = Field(description="Active execution environment")
+    debug: bool = Field(description="Debug mode state")
+    uptime_seconds: float = Field(description="Total uptime in seconds")
+    python_version: str = Field(description="Python interpreter version")
+    platform: str = Field(description="Host platform architecture")
+    status: str = Field(default="ready", description="System operational readiness status")
+    total_routes: int = Field(description="Number of registered API routes")
+    registered_endpoints: list[str] = Field(
+        description="List of all registered endpoint HTTP paths"
+    )
 
 
-@router.get("/system/info", response_model=SystemInfoResponse)
-async def get_system_info() -> SystemInfoResponse:
+@router.get(
+    "/system/info",
+    response_model=APIResponse[SystemInfoData],
+    summary="Get system diagnostics and runtime metadata",
+    description="Returns detailed platform, Python runtime, uptime, and route registry info.",
+)
+async def get_system_info(
+    request: Request,
+    runtime_info: SystemRuntimeDep,
+) -> APIResponse[SystemInfoData]:
     """Return backend runtime diagnostics information."""
-    return SystemInfoResponse(
-        project="VisionForge Workbench",
-        version="0.1.0",
-        python_version=sys.version.split()[0],
-        platform=platform.platform(),
+    app = request.app
+
+    # Extract OpenAPI path keys for clean registered endpoint discovery
+    openapi_schema = app.openapi()
+    endpoints = sorted(list(openapi_schema.get("paths", {}).keys()))
+
+    info_data = SystemInfoData(
+        project=runtime_info["project"],
+        version=runtime_info["version"],
+        environment=runtime_info["environment"],
+        debug=runtime_info["debug"],
+        uptime_seconds=runtime_info["uptime_seconds"],
+        python_version=runtime_info["python_version"],
+        platform=runtime_info["platform"],
         status="ready",
+        total_routes=len(endpoints),
+        registered_endpoints=endpoints,
+    )
+
+    return success_response(
+        data=info_data,
+        message="System info diagnostics retrieved successfully",
     )
