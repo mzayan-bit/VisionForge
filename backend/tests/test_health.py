@@ -8,10 +8,18 @@ client = TestClient(app)
 
 
 def test_health_endpoint():
-    """Verify /api/v1/health returns HTTP 200 with expected structure."""
+    """Verify /api/v1/health returns HTTP 200 with standardized envelope structure."""
     response = client.get("/api/v1/health")
     assert response.status_code == 200
-    data = response.json()
+    json_data = response.json()
+
+    assert json_data["success"] is True
+    assert json_data["error"] is None
+    assert "timestamp" in json_data["meta"]
+
+    data = json_data["data"]
     assert data["status"] == "ok"
     assert data["service"] == "visionforge-backend"
     assert "version" in data
+    assert "environment" in data
+    assert "uptime_seconds" in data
