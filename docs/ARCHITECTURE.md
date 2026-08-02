@@ -23,11 +23,17 @@ VisionForge is designed around three fundamental core principles: **Decoupled Ar
 
 ## System Components
 
-### 1. API Core & Lifecycle (`backend/visionforge`)
+### 1. API Core & Platform Abstractions (`backend/visionforge`)
 
-- `visionforge.main`: Entry point for the FastAPI ASGI service. Handles lifespan hooks, middleware registration (CORS), and router attachments.
-- `visionforge.config`: Central settings manager powered by Pydantic `BaseSettings`. Loads configurations from environment variables or `.env` files safely.
-- `visionforge.api.v1`: Versioned REST API layer exposing system status, health checks, and future model management routes.
+- `visionforge.main`: Application factory (`create_app`) mounting routers, middleware, exception handlers, and root metadata.
+- `visionforge.core.config`: Centralized Pydantic Settings manager (`VisionForgeSettings`) with environment variable validation, `.env` support, and `@lru_cache` singleton accessor.
+- `visionforge.core.logging`: ANSI colored console logging with ISO timestamps, logger scoping (`visionforge.*`), and request timing logs.
+- `visionforge.core.responses`: Unified generic response envelope (`APIResponse[T]`) for consistent JSON contracts across success, error, and validation outputs.
+- `visionforge.core.exceptions`: Centralized exception handlers translating custom domain exceptions (`VisionForgeException`), HTTP errors, and validation failures.
+- `visionforge.core.middleware`: Request tracing (`X-Request-ID`), process timing (`X-Process-Time`), and CORS middleware.
+- `visionforge.core.lifecycle`: Async lifespan context manager tracking application boot time and registered route tree.
+- `visionforge.core.dependencies`: FastAPI dependency injection layer providing accessors for settings, system diagnostics, and app state.
+- `visionforge.api.v1`: Versioned REST API layer (`/api/v1/health`, `/api/v1/system/info`).
 
 ### 2. Workbench Frontend (`frontend/src`)
 
