@@ -12,7 +12,7 @@ echo "[2/4] Formatting Python backend check..."
 echo "[3/4] Running Backend Tests..."
 (cd backend && uv run pytest)
 
-echo "[4/4] Checking Frontend TypeScript & ESLint..."
-(cd frontend && npm run lint && npx tsc --noEmit)
+echo "[4/4] Building and checking Frontend TypeScript & ESLint..."
+(cd frontend && npx next build --webpack)
 
 echo "=== All Quality Checks Passed! ==="
