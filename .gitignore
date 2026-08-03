@@ -71,6 +71,6 @@ logs/
 
 # VisionForge Temporary / Cache Artifacts
 .visionforge_cache/
-downloads/
-datasets/
-checkpoints/
+/downloads/
+/datasets/
+/checkpoints/
