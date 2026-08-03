@@ -1,5 +1,7 @@
 """System diagnostics API endpoints."""
 
+from typing import Any
+
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
@@ -24,13 +26,14 @@ class SystemInfoData(BaseModel):
     registered_endpoints: list[str] = Field(
         description="List of all registered endpoint HTTP paths"
     )
+    ai_core: dict[str, Any] = Field(description="AI Core subsystem diagnostics")
 
 
 @router.get(
     "/system/info",
     response_model=APIResponse[SystemInfoData],
     summary="Get system diagnostics and runtime metadata",
-    description="Returns detailed platform, Python runtime, uptime, and route registry info.",
+    description="Returns detailed platform, Python runtime, uptime, and AI Core info.",
 )
 async def get_system_info(
     request: Request,
@@ -54,6 +57,7 @@ async def get_system_info(
         status="ready",
         total_routes=len(endpoints),
         registered_endpoints=endpoints,
+        ai_core=runtime_info["ai_core"],
     )
 
     return success_response(

@@ -23,3 +23,5 @@ def test_health_endpoint():
     assert "version" in data
     assert "environment" in data
     assert "uptime_seconds" in data
+    assert "ai_core" in data
+    assert data["ai_core"]["status"] == "ready"
