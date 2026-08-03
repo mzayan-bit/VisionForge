@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
+import { WorkbenchShell } from "@/components/layout/WorkbenchShell";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -21,9 +22,9 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body
-        className={`${inter.variable} font-sans bg-slate-950 text-slate-100 antialiased min-h-screen flex flex-col selection:bg-cyan-500/30 selection:text-cyan-200`}
+        className={`${inter.variable} font-sans bg-[#0a0a0a] text-neutral-100 antialiased min-h-screen selection:bg-blue-600/30 selection:text-blue-200`}
       >
-        {children}
+        <WorkbenchShell>{children}</WorkbenchShell>
       </body>
     </html>
   );

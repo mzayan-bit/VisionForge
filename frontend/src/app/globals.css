@@ -1,1 +1,61 @@
 @import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-inter: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-geist: 'Geist', 'Inter', monospace;
+    
+    /* Design Tokens matching Obsidian Dark Mode First palette */
+    --bg-canvas: #0a0a0a;
+    --bg-surface: #111111;
+    --bg-surface-hover: #181818;
+    --bg-elevated: #1a1a1a;
+    
+    --border-subtle: rgba(255, 255, 255, 0.08);
+    --border-strong: rgba(255, 255, 255, 0.16);
+    
+    --accent-primary: #2e90fa;
+    --accent-secondary: #12b76a;
+    --accent-tertiary: #f79009;
+    --accent-danger: #f04438;
+  }
+
+  body {
+    background-color: var(--bg-canvas);
+    color: #e5e2e1;
+    font-family: var(--font-inter);
+    overflow-x: hidden;
+  }
+}
+
+/* Glassmorphism & Surface Utilities */
+.glass-panel {
+  background-color: rgba(17, 17, 17, 0.75);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border-subtle);
+}
+
+.glass-modal {
+  background-color: rgba(23, 23, 23, 0.85);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--border-strong);
+}
+
+/* Custom Scrollbar for Workbench UI */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0a0a0a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #262626;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #404040;
+}
