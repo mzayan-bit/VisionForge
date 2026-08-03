@@ -50,6 +50,21 @@ class VisionForgeSettings(BaseSettings):
         description="Logging level (DEBUG, INFO, WARNING, ERROR)",
     )
 
+    # AI Core Infrastructure Settings
+    model_cache_dir: str = Field(
+        default="~/.cache/visionforge/models",
+        description="Directory path for cached model artifacts and checkpoints",
+    )
+    default_device: str = Field(
+        default="auto",
+        description="Default compute target device (auto, cpu, cuda, mps)",
+    )
+    max_cached_models: int = Field(
+        default=3,
+        description="Maximum number of loaded models permitted in GPU/RAM memory cache",
+        ge=1,
+    )
+
     @field_validator("log_level")
     @classmethod
     def validate_log_level(cls, v: str) -> str:
