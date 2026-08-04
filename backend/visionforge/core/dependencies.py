@@ -14,6 +14,7 @@ from visionforge.core.lifecycle import get_uptime_seconds
 from visionforge.engine.extensions import ExtensionRegistry, get_extension_registry
 from visionforge.engine.manager import TaskManager, get_task_manager
 from visionforge.engine.runner import VisionEngine, get_vision_engine
+from visionforge.models.manager import ModelManager, get_model_manager
 
 
 def get_settings_dep() -> VisionForgeSettings:
@@ -56,6 +57,11 @@ def get_vision_engine_dep() -> VisionEngine:
     return get_vision_engine()
 
 
+def get_model_manager_dep() -> ModelManager:
+    """Inject singleton ModelManager instance."""
+    return get_model_manager()
+
+
 def get_system_runtime_dep(
     settings: Annotated[VisionForgeSettings, Depends(get_settings_dep)],
     uptime: Annotated[float, Depends(get_uptime_dep)],
@@ -63,8 +69,9 @@ def get_system_runtime_dep(
     device_mgr: Annotated[DeviceManager, Depends(get_device_manager_dep)],
     cache_mgr: Annotated[CacheManager, Depends(get_cache_manager_dep)],
     engine: Annotated[VisionEngine, Depends(get_vision_engine_dep)],
+    model_mgr: Annotated[ModelManager, Depends(get_model_manager_dep)],
 ) -> dict[str, Any]:
-    """Inject diagnostic runtime metadata including AI Core and Vision Engine telemetry."""
+    """Inject diagnostic runtime metadata including AI Core, Vision Engine, and Model Manager."""
     hw_caps = device_mgr.get_hardware_capabilities()
     cache_stats = cache_mgr.get_cache_stats()
 
@@ -84,6 +91,7 @@ def get_system_runtime_dep(
             "cache_size_mb": cache_stats.total_size_mb,
         },
         "vision_engine": engine.get_engine_stats(),
+        "model_manager": model_mgr.get_manager_status(),
     }
 
 
@@ -97,3 +105,4 @@ CacheManagerDep = Annotated[CacheManager, Depends(get_cache_manager_dep)]
 TaskManagerDep = Annotated[TaskManager, Depends(get_task_manager_dep)]
 ExtensionRegistryDep = Annotated[ExtensionRegistry, Depends(get_extension_registry_dep)]
 VisionEngineDep = Annotated[VisionEngine, Depends(get_vision_engine_dep)]
+ModelManagerDep = Annotated[ModelManager, Depends(get_model_manager_dep)]
