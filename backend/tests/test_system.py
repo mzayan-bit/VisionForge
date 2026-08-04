@@ -23,6 +23,7 @@ def test_system_info_endpoint():
     assert "platform" in data
     assert "total_routes" in data
     assert "ai_core" in data
+    assert "vision_engine" in data
     assert isinstance(data["registered_endpoints"], list)
     assert "/api/v1/health" in data["registered_endpoints"]
     assert "/api/v1/system/info" in data["registered_endpoints"]

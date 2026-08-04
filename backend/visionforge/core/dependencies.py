@@ -11,6 +11,9 @@ from visionforge.ai.device import DeviceManager, get_device_manager
 from visionforge.ai.registry import ModelRegistry, get_model_registry
 from visionforge.core.config import VisionForgeSettings, get_settings
 from visionforge.core.lifecycle import get_uptime_seconds
+from visionforge.engine.extensions import ExtensionRegistry, get_extension_registry
+from visionforge.engine.manager import TaskManager, get_task_manager
+from visionforge.engine.runner import VisionEngine, get_vision_engine
 
 
 def get_settings_dep() -> VisionForgeSettings:
@@ -38,14 +41,30 @@ def get_cache_manager_dep() -> CacheManager:
     return get_cache_manager()
 
 
+def get_task_manager_dep() -> TaskManager:
+    """Inject singleton TaskManager instance."""
+    return get_task_manager()
+
+
+def get_extension_registry_dep() -> ExtensionRegistry:
+    """Inject singleton ExtensionRegistry instance."""
+    return get_extension_registry()
+
+
+def get_vision_engine_dep() -> VisionEngine:
+    """Inject singleton VisionEngine instance."""
+    return get_vision_engine()
+
+
 def get_system_runtime_dep(
     settings: Annotated[VisionForgeSettings, Depends(get_settings_dep)],
     uptime: Annotated[float, Depends(get_uptime_dep)],
     registry: Annotated[ModelRegistry, Depends(get_model_registry_dep)],
     device_mgr: Annotated[DeviceManager, Depends(get_device_manager_dep)],
     cache_mgr: Annotated[CacheManager, Depends(get_cache_manager_dep)],
+    engine: Annotated[VisionEngine, Depends(get_vision_engine_dep)],
 ) -> dict[str, Any]:
-    """Inject diagnostic runtime metadata including AI Core telemetry."""
+    """Inject diagnostic runtime metadata including AI Core and Vision Engine telemetry."""
     hw_caps = device_mgr.get_hardware_capabilities()
     cache_stats = cache_mgr.get_cache_stats()
 
@@ -64,6 +83,7 @@ def get_system_runtime_dep(
             "cache_dir": cache_stats.cache_directory,
             "cache_size_mb": cache_stats.total_size_mb,
         },
+        "vision_engine": engine.get_engine_stats(),
     }
 
 
@@ -74,3 +94,6 @@ SystemRuntimeDep = Annotated[dict[str, Any], Depends(get_system_runtime_dep)]
 ModelRegistryDep = Annotated[ModelRegistry, Depends(get_model_registry_dep)]
 DeviceManagerDep = Annotated[DeviceManager, Depends(get_device_manager_dep)]
 CacheManagerDep = Annotated[CacheManager, Depends(get_cache_manager_dep)]
+TaskManagerDep = Annotated[TaskManager, Depends(get_task_manager_dep)]
+ExtensionRegistryDep = Annotated[ExtensionRegistry, Depends(get_extension_registry_dep)]
+VisionEngineDep = Annotated[VisionEngine, Depends(get_vision_engine_dep)]

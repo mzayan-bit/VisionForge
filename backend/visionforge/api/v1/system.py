@@ -27,13 +27,14 @@ class SystemInfoData(BaseModel):
         description="List of all registered endpoint HTTP paths"
     )
     ai_core: dict[str, Any] = Field(description="AI Core subsystem diagnostics")
+    vision_engine: dict[str, Any] = Field(description="Vision Engine execution layer diagnostics")
 
 
 @router.get(
     "/system/info",
     response_model=APIResponse[SystemInfoData],
     summary="Get system diagnostics and runtime metadata",
-    description="Returns detailed platform, Python runtime, uptime, and AI Core info.",
+    description="Returns platform, runtime, uptime, AI Core, and Vision Engine info.",
 )
 async def get_system_info(
     request: Request,
@@ -58,6 +59,7 @@ async def get_system_info(
         total_routes=len(endpoints),
         registered_endpoints=endpoints,
         ai_core=runtime_info["ai_core"],
+        vision_engine=runtime_info["vision_engine"],
     )
 
     return success_response(
