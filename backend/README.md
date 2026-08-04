@@ -7,12 +7,13 @@ The backend foundation for VisionForge — a modular, high-performance Python pl
 ## 🏛️ Architectural Principles
 
 1. **Modular Domain Structure**: Decoupled core infrastructure supporting seamless extension for future engines (datasets, models, benchmarking, visualization, plugins).
-2. **AI Core Orchestration**: Unified `BaseVisionModel` abstract contract, `ModelRegistry`, `DeviceManager`, and `CacheManager` without model-specific code sprawl.
-3. **Unified API Envelopes**: Consistent JSON response contracts (`APIResponse[T]`) across success, error, and validation outcomes.
-4. **Pydantic Settings Layer**: Strongly-typed configuration system with environment variable overriding, `.env` file loading, and cached singleton access.
-5. **Structured ANSI Logging**: Colored terminal output with ISO timestamps, logger hierarchy, request performance metrics, and stack trace formatting.
-6. **Centralized Exception Handling**: Global error translation for domain exceptions, HTTP errors, and request validation failures into predictable JSON payloads.
-7. **Dependency Injection**: First-class FastAPI dependency accessors for settings, system diagnostics, AI Core registry, and device managers.
+2. **Vision Engine Execution Layer**: Central execution operating system (`VisionEngine`, `TaskManager`, `EnginePipeline`, `ExtensionRegistry`, `MetricsCollector`).
+3. **AI Core Orchestration**: Unified `BaseVisionModel` abstract contract, `ModelRegistry`, `DeviceManager`, and `CacheManager` without model-specific code sprawl.
+4. **Unified API Envelopes**: Consistent JSON response contracts (`APIResponse[T]`) across success, error, and validation outcomes.
+5. **Pydantic Settings Layer**: Strongly-typed configuration system with environment variable overriding, `.env` file loading, and cached singleton access.
+6. **Structured ANSI Logging**: Colored terminal output with ISO timestamps, logger hierarchy, request performance metrics, and stack trace formatting.
+7. **Centralized Exception Handling**: Global error translation for domain exceptions, HTTP errors, and request validation failures into predictable JSON payloads.
+8. **Dependency Injection**: First-class FastAPI dependency accessors for settings, system diagnostics, Vision Engine, AI Core registry, and device managers.
 
 ---
 
@@ -28,6 +29,15 @@ backend/
 │   │       ├── router.py    # API v1 router registry
 │   │       ├── health.py    # Health diagnostics endpoint (/api/v1/health)
 │   │       └── system.py    # System runtime info endpoint (/api/v1/system/info)
+│   ├── engine/              # Vision Engine Execution Layer
+│   │   ├── runner.py        # VisionEngine orchestrator facade & get_vision_engine singleton
+│   │   ├── context.py       # ExecutionContext model
+│   │   ├── task.py          # BaseVisionTask abstract class & TaskState enum
+│   │   ├── manager.py       # TaskManager & get_task_manager singleton
+│   │   ├── pipeline.py      # EnginePipeline & standard PipelineStage implementations
+│   │   ├── extensions.py    # ExtensionRegistry for plugin hooks
+│   │   ├── metrics.py       # MetricsCollector, ExecutionMetrics, & StageMetrics
+│   │   └── exceptions.py    # EngineException hierarchy
 │   ├── ai/                  # AI Core Package (Orchestration & Abstractions)
 │   │   ├── base.py          # BaseVisionModel Abstract Base Class & ModelStatus
 │   │   ├── types.py         # ModelMetadata, TaskType, InputType, OutputType, MemoryRequirements
@@ -43,7 +53,7 @@ backend/
 │       ├── middleware.py    # X-Request-ID tracing, X-Process-Time, & CORS
 │       ├── lifecycle.py     # Async lifespan context manager & uptime tracker
 │       └── dependencies.py  # Dependency injection functions & type aliases
-└── tests/                   # Pytest test suite (config, health, system, middleware, exceptions, ai_core)
+└── tests/                   # Pytest test suite (config, health, system, middleware, exceptions, ai_core, vision_engine)
 ```
 
 ---
@@ -72,52 +82,23 @@ Configuration is defined in `visionforge.core.config.VisionForgeSettings` using 
 
 ---
 
-## 🧠 AI Core Architecture
+## ⚙️ Vision Engine Execution Layer
 
-All future computer vision models inherit from `BaseVisionModel` and register with `ModelRegistry`:
+The Vision Engine coordinates execution lifecycle across validation, task creation, model resolution, pipeline stages, metrics, and error recovery:
 
 ```python
-from visionforge.ai import (
-    BaseVisionModel,
-    ModelMetadata,
-    TaskType,
-    InferenceResult,
-    get_model_registry,
+from visionforge.ai.types import TaskType
+from visionforge.engine import get_vision_engine
+
+engine = get_vision_engine()
+
+# Execute task through full engine pipeline
+result = await engine.run_task(
+    task_type=TaskType.DETECTION,
+    payload={"image": "frame_001.png"},
+    model_name="yolo-v8-detector",
+    device="auto",
 )
-
-
-class CustomDetector(BaseVisionModel):
-    @property
-    def metadata(self) -> ModelMetadata:
-        return ModelMetadata(name="custom-detector", task=TaskType.DETECTION)
-
-    async def initialize(self) -> None: ...
-    async def load(self, device: str | None = None) -> None: ...
-    async def predict(self, inputs: Any, **kwargs: Any) -> InferenceResult[Any]: ...
-    async def unload(self) -> None: ...
-    async def cleanup(self) -> None: ...
-
-
-# Registration
-get_model_registry().register(CustomDetector())
-```
-
----
-
-## 📬 Unified Response Models
-
-All API responses follow the standard `APIResponse[T]` model:
-
-```json
-{
-  "success": true,
-  "message": "Operation completed successfully",
-  "data": { ... },
-  "meta": {
-    "timestamp": "2026-08-03T00:05:00+00:00"
-  },
-  "error": null
-}
 ```
 
 ---
