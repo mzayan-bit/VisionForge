@@ -105,4 +105,9 @@ class ModelRegistry:
 @lru_cache
 def get_model_registry() -> ModelRegistry:
     """Return a cached singleton instance of ModelRegistry."""
-    return ModelRegistry()
+    registry = ModelRegistry()
+    from visionforge.ai.models.siglip import SigLIPEmbeddingModel
+
+    siglip = SigLIPEmbeddingModel()
+    registry.register(siglip)
+    return registry
