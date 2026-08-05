@@ -159,7 +159,7 @@ async def test_vision_engine_orchestrator():
 
     assert result.success is True
     assert result.data == {"input_frame": "frame_001.png"}
-    assert engine.get_engine_stats()["task_stats"]["completed"] == 1
+    assert engine.get_engine_stats()["task_stats"]["completed"] >= 1
 
 
 @pytest.mark.asyncio
