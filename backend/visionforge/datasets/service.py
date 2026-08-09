@@ -210,6 +210,10 @@ class DatasetPreparationService:
             return export_manifest_csv(manifest)
         return manifest.model_dump()
 
+    def get_preparation_manifest(self, prep_id: str) -> dict[str, Any]:
+        """Retrieve preparation manifest dictionary."""
+        return self.export_manifest(prep_id, fmt="json")
+
     def _compute_split_stats(
         self, samples: list[SampleRef], counts: dict[str, int]
     ) -> dict[str, SplitStats]:
