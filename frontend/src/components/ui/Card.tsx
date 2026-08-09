@@ -42,6 +42,16 @@ export const CardHeader: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({
   </div>
 );
 
+export const CardTitle: React.FC<React.HTMLAttributes<HTMLHeadingElement>> = ({
+  children,
+  className = "",
+  ...props
+}) => (
+  <h3 className={`text-lg font-semibold text-white ${className}`} {...props}>
+    {children}
+  </h3>
+);
+
 export const CardBody: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({
   children,
   className = "",
@@ -51,6 +61,8 @@ export const CardBody: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({
     {children}
   </div>
 );
+
+export const CardContent = CardBody;
 
 export const CardFooter: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({
   children,
