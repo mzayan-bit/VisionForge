@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter
 
+from visionforge.api.v1.datasets import router as datasets_router
 from visionforge.api.v1.embeddings import router as embeddings_router
 from visionforge.api.v1.explorer import router as explorer_router
 from visionforge.api.v1.health import router as health_router
@@ -18,5 +19,6 @@ router.include_router(embeddings_router)
 router.include_router(memory_router)
 router.include_router(search_router)
 router.include_router(explorer_router)
+router.include_router(datasets_router)
 
 __all__ = ["router"]
