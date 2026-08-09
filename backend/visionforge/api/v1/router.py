@@ -10,6 +10,7 @@ from visionforge.api.v1.memory import router as memory_router
 from visionforge.api.v1.models import router as models_router
 from visionforge.api.v1.search import router as search_router
 from visionforge.api.v1.system import router as system_router
+from visionforge.api.v1.training import router as training_router
 
 router = APIRouter(prefix="/v1")
 router.include_router(health_router)
@@ -20,5 +21,6 @@ router.include_router(memory_router)
 router.include_router(search_router)
 router.include_router(explorer_router)
 router.include_router(datasets_router)
+router.include_router(training_router)
 
 __all__ = ["router"]
