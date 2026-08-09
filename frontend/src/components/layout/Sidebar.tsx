@@ -37,6 +37,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggleCollapse })
     { label: "Benchmarks", href: "/benchmarks", icon: <BarChart2 className="w-4 h-4" /> },
     { label: "Experiments", href: "/experiments", icon: <FlaskConical className="w-4 h-4" /> },
     { label: "Datasets", href: "/datasets", icon: <Database className="w-4 h-4 text-emerald-400" /> },
+    { label: "Training Lab", href: "/training", icon: <Cpu className="w-4 h-4 text-indigo-400" /> },
   ];
 
   const systemItems = [
