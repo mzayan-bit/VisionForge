@@ -38,6 +38,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggleCollapse })
     { label: "Experiments", href: "/experiments", icon: <FlaskConical className="w-4 h-4" /> },
     { label: "Datasets", href: "/datasets", icon: <Database className="w-4 h-4 text-emerald-400" /> },
     { label: "Training Lab", href: "/training", icon: <Cpu className="w-4 h-4 text-indigo-400" /> },
+    { label: "Vision Lab", href: "/vision-lab", icon: <FlaskConical className="w-4 h-4 text-cyan-400" /> },
   ];
 
   const systemItems = [
