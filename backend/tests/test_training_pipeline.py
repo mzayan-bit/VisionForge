@@ -14,7 +14,7 @@ from visionforge.training.service import (
     TrainingHistoryStore,
     TrainingService,
 )
-from visionforge.training.trainer import YOLOTrainer
+from visionforge.training.trainer import UltralyticsTrainer
 
 client = TestClient(app)
 
@@ -77,8 +77,8 @@ def test_yolo_adapter_manifest_processing(tmp_path):
 
 
 def test_yolo_trainer_synthetic_execution(tmp_path):
-    """Verify YOLOTrainer metric parsing and evaluation."""
-    trainer = YOLOTrainer(output_root=tmp_path / "runs")
+    """Verify UltralyticsTrainer metric parsing and evaluation."""
+    trainer = UltralyticsTrainer(output_root=tmp_path / "runs")
     cfg = TrainingConfig(
         dataset_id="d1",
         preparation_id="p1",

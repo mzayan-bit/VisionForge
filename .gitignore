@@ -74,3 +74,7 @@ logs/
 /downloads/
 /datasets/
 /checkpoints/
+*.pt
+*.part
+*.bin
+*.onnx

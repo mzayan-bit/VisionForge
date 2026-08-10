@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 from visionforge.datasets.leakage import detect_data_leakage
 from visionforge.datasets.manifest import build_manifest, export_manifest_csv
-from visionforge.datasets.schemas import SplitConfig, SplitStrategy
+from visionforge.datasets.schemas import SplitConfig
 from visionforge.datasets.service import DatasetPreparationService, PreparationHistoryStore
 from visionforge.datasets.splitting import InvalidSplitRatioError, partition_dataset
 from visionforge.datasets.validation import validate_dataset

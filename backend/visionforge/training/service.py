@@ -25,7 +25,7 @@ from visionforge.training.schemas import (
     TrainingRun,
     TrainingStatus,
 )
-from visionforge.training.trainer import YOLOTrainer
+from visionforge.training.trainer import UltralyticsTrainer
 
 logger = logging.getLogger("visionforge.training.service")
 
@@ -152,7 +152,7 @@ class TrainingService:
             run.status = TrainingStatus.RUNNING
             cache_root = Path(get_settings().model_cache_dir).expanduser().resolve()
             output_root = cache_root.parent / "training" / "runs"
-            trainer = YOLOTrainer(output_root=output_root)
+            trainer = UltralyticsTrainer(output_root=output_root)
 
             metrics_history, best_metrics, best_pt, last_pt = trainer.train_model(
                 dataset_yaml=dataset_yaml, config=config
@@ -206,7 +206,7 @@ class TrainingService:
 
         cache_root = Path(get_settings().model_cache_dir).expanduser().resolve()
         output_root = cache_root.parent / "training" / "runs"
-        trainer = YOLOTrainer(output_root=output_root)
+        trainer = UltralyticsTrainer(output_root=output_root)
         checkpoint_p = Path(run.best_checkpoint_path).expanduser().resolve()
         eval_result = trainer.evaluate_model(
             checkpoint_path=checkpoint_p, dataset_yaml=dataset_yaml
@@ -271,7 +271,7 @@ class TrainingService:
 
         cache_root = Path(get_settings().model_cache_dir).expanduser().resolve()
         output_root = cache_root.parent / "training" / "runs"
-        trainer = YOLOTrainer(output_root=output_root)
+        trainer = UltralyticsTrainer(output_root=output_root)
         return trainer.run_smoke_test(
             run_id=run.run_id,
             model_name=run.config.model_name,

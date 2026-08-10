@@ -3,7 +3,6 @@
 import logging
 import time
 from pathlib import Path
-from typing import Any
 
 from visionforge.core.exceptions import VisionForgeException
 from visionforge.training.schemas import (
@@ -25,8 +24,8 @@ class TrainingExecutionError(VisionForgeException):
         super().__init__(message=message, code="TRAINING_EXECUTION_ERROR", status_code=500)
 
 
-class YOLOTrainer:
-    """Wrapper managing Ultralytics PyTorch training, evaluation, and inference smoke tests."""
+class UltralyticsTrainer:
+    """Wrapper managing Ultralytics PyTorch training (YOLO and RT-DETR), evaluation, and inference."""
 
     def __init__(self, output_root: Path):
         self._output_root = output_root.resolve()
@@ -35,7 +34,7 @@ class YOLOTrainer:
     def train_model(
         self, dataset_yaml: Path, config: TrainingConfig
     ) -> tuple[list[MetricSnapshot], MetricSnapshot, Path, Path]:
-        """Execute YOLO model training.
+        """Execute model training via Ultralytics API.
 
         Returns tuple of (metrics_history, best_metrics, best_checkpoint_path, last_checkpoint_path).
         """
@@ -50,9 +49,13 @@ class YOLOTrainer:
         metrics_history: list[MetricSnapshot] = []
 
         try:
-            from ultralytics import YOLO
+            from ultralytics import RTDETR, YOLO
 
-            model = YOLO(config.model_name)
+            if "rtdetr" in config.model_name.lower():
+                model = RTDETR(config.model_name)
+            else:
+                model = YOLO(config.model_name)
+
             # Run Ultralytics PyTorch training
             results = model.train(
                 data=str(dataset_yaml),
@@ -118,9 +121,13 @@ class YOLOTrainer:
     def evaluate_model(self, checkpoint_path: Path, dataset_yaml: Path) -> EvaluationResult:
         """Run separate test set evaluation."""
         try:
-            from ultralytics import YOLO
+            from ultralytics import RTDETR, YOLO
 
-            model = YOLO(str(checkpoint_path))
+            if "rtdetr" in str(checkpoint_path).lower():
+                model = RTDETR(str(checkpoint_path))
+            else:
+                model = YOLO(str(checkpoint_path))
+
             val_res = model.val(data=str(dataset_yaml), split="test", verbose=False)
 
             if hasattr(val_res, "results_dict"):
@@ -157,9 +164,17 @@ class YOLOTrainer:
             boxes: list[BoundingBox] = []
 
             try:
-                from ultralytics import YOLO
+                from ultralytics import RTDETR, YOLO
 
-                model = YOLO(str(checkpoint_path))
+                if "rtdetr" in str(checkpoint_path).lower():
+                    model = RTDETR(str(checkpoint_path))
+                else:
+                    model = YOLO(str(checkpoint_path))
+
+                # Warmup
+                model(str(img_path), verbose=False)
+
+                t0 = time.perf_counter()
                 res = model(str(img_path), verbose=False)
                 dt = (time.perf_counter() - t0) * 1000.0
                 latencies.append(dt)

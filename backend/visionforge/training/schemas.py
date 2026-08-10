@@ -2,7 +2,6 @@
 
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -101,10 +100,24 @@ class TrainingRun(BaseModel):
     created_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat(), description="Creation ISO timestamp")
     completed_at: str | None = Field(default=None, description="Completion ISO timestamp")
     config: TrainingConfig = Field(description="Training configuration")
-    metrics_history: list[MetricSnapshot] = Field(default_factory=list, description="Per-epoch metric snapshots")
-    best_metrics: MetricSnapshot | None = Field(default=None, description="Best validation epoch metrics")
-    test_evaluation: EvaluationResult | None = Field(default=None, description="Separate test set metrics")
-    best_checkpoint_path: str | None = Field(default=None, description="Path to best.pt checkpoint")
-    last_checkpoint_path: str | None = Field(default=None, description="Path to last.pt checkpoint")
-    registered_model_version: str | None = Field(default=None, description="Registered model version if registered")
-    error_message: str | None = Field(default=None, description="Error details if run failed")
+    metrics_history: list[MetricSnapshot] = Field(
+        default_factory=list, description="Per-epoch metric snapshots"
+    )
+    best_metrics: MetricSnapshot | None = Field(
+        default=None, description="Best validation epoch metrics"
+    )
+    test_evaluation: EvaluationResult | None = Field(
+        default=None, description="Separate test set metrics"
+    )
+    best_checkpoint_path: str | None = Field(
+        default=None, description="Path to best.pt checkpoint"
+    )
+    last_checkpoint_path: str | None = Field(
+        default=None, description="Path to last.pt checkpoint"
+    )
+    registered_model_version: str | None = Field(
+        default=None, description="Registered model version if registered"
+    )
+    error_message: str | None = Field(
+        default=None, description="Error details if run failed"
+    )
