@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter
 
+from visionforge.api.v1.active_learning import router as active_learning_router
 from visionforge.api.v1.datasets import router as datasets_router
 from visionforge.api.v1.embeddings import router as embeddings_router
 from visionforge.api.v1.evaluation import router as evaluation_router
@@ -28,5 +29,6 @@ router.include_router(training_router)
 router.include_router(evaluation_router)
 router.include_router(inference_router)
 router.include_router(experiments_router)
+router.include_router(active_learning_router)
 
 __all__ = ["router"]
