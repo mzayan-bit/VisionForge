@@ -173,3 +173,54 @@ class StrategyComparisonResult(BaseModel):
     diversity_delta: float = Field(description="Visual coverage diversity difference")
     uncertainty_delta: float = Field(description="Average uncertainty difference")
     summary_notes: str = Field(description="Qualitative strategy comparison analysis")
+
+
+class ImprovementVerdict(StrEnum):
+    """Empirical verdict answering: Did performance actually improve?"""
+
+    IMPROVED = "IMPROVED"
+    REGRESSED = "REGRESSED"
+    NEUTRAL = "NEUTRAL"
+
+
+class MetricDelta(BaseModel):
+    """Specific metric change before and after active learning retraining."""
+
+    baseline_val: float = Field(description="Evaluation metric score on baseline model")
+    retrained_val: float = Field(description="Evaluation metric score on retrained model")
+    delta: float = Field(description="Absolute score difference (retrained - baseline)")
+    percent_change: float = Field(description="Relative percentage change (%)")
+
+
+class ActiveLearningIteration(BaseModel):
+    """Complete closed-loop active learning retraining iteration record."""
+
+    iteration_id: str = Field(description="Unique iteration ID ('iter_...')")
+    baseline_dataset_id: str = Field(description="Baseline dataset ID (D0)")
+    baseline_model_id: str = Field(description="Baseline model ID (M0)")
+    baseline_evaluation_id: str = Field(description="Baseline evaluation ID (E0)")
+    active_learning_run_id: str = Field(description="Active learning recommendation run ID")
+    reviewed_samples_count: int = Field(description="Count of accepted human-reviewed samples")
+    new_dataset_version: str = Field(description="New dataset version tag (D1)")
+    retrained_run_id: str = Field(description="Controlled retraining run ID (Run M1)")
+    retrained_model_id: str = Field(description="Retrained model ID (M1)")
+    retrained_evaluation_id: str = Field(description="Retrained evaluation ID on untouched test split (E1)")
+    map50_delta: MetricDelta = Field(description="mAP@50 delta telemetry")
+    map50_95_delta: MetricDelta = Field(description="mAP@50:95 delta telemetry")
+    precision_delta: MetricDelta = Field(description="Precision delta telemetry")
+    recall_delta: MetricDelta = Field(description="Recall delta telemetry")
+    verdict: ImprovementVerdict = Field(description="Final empirical performance verdict")
+    verdict_summary: str = Field(description="Qualitative explanation of performance delta")
+    created_at: str = Field(
+        default_factory=lambda: datetime.now(UTC).isoformat(), description="Execution ISO timestamp"
+    )
+
+
+class ExecuteLoopRequest(BaseModel):
+    """Payload for executing an end-to-end active learning retraining iteration."""
+
+    baseline_dataset_id: str = Field(default="safety_v2")
+    baseline_model_id: str = Field(default="yolo11s.pt")
+    active_learning_run_id: str = Field(description="Active learning run ID containing reviewed samples")
+    new_version_tag: str | None = Field(default=None, description="Optional new dataset version tag (e.g. v2.1)")
+

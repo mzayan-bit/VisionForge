@@ -8,7 +8,9 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from visionforge.active_learning.loop import execute_active_learning_loop_iteration
 from visionforge.active_learning.schemas import (
+    ActiveLearningIteration,
     ActiveLearningRun,
     ReviewDecisionRequest,
     SelectionBiasReport,
@@ -66,8 +68,31 @@ class ActiveLearningService:
         self._storage_dir = Path(raw_path).resolve()
         self._storage_dir.mkdir(parents=True, exist_ok=True)
         self._runs_file = self._storage_dir / "active_learning_runs.json"
+        self._iterations_file = self._storage_dir / "active_learning_iterations.json"
         self._runs: dict[str, ActiveLearningRun] = {}
+        self._iterations: dict[str, ActiveLearningIteration] = {}
         self.load_from_disk()
+
+    # ─── Closed-Loop Retraining & Iterations ──────────────────────────
+
+    def execute_loop(
+        self, active_learning_run_id: str, new_version_tag: str | None = None
+    ) -> ActiveLearningIteration:
+        """Execute closed-loop retraining iteration and compute empirical metric delta on untouched test split."""
+        run = self.get_run(active_learning_run_id)
+        iteration = execute_active_learning_loop_iteration(run, new_version_tag)
+        self._iterations[iteration.iteration_id] = iteration
+        self.save_to_disk()
+        return iteration
+
+    def get_iteration(self, iteration_id: str) -> ActiveLearningIteration:
+        if iteration_id not in self._iterations:
+            raise ActiveLearningRunNotFoundError(f"Active learning iteration '{iteration_id}' not found.")
+        return self._iterations[iteration_id]
+
+    def list_iterations(self, limit: int = 50, offset: int = 0) -> list[ActiveLearningIteration]:
+        all_iters = sorted(self._iterations.values(), key=lambda i: i.created_at, reverse=True)
+        return all_iters[offset : offset + limit]
 
     # ─── Mandatory Test-Set Protection ───────────────────────────────
 
@@ -315,16 +340,33 @@ class ActiveLearningService:
         }
         self._runs_file.write_text(json.dumps(serializable, indent=2, default=str), encoding="utf-8")
 
+        iters_serializable = {
+            "version": "1.0.0",
+            "saved_at": datetime.now(UTC).isoformat(),
+            "iterations": [it.model_dump() for it in self._iterations.values()],
+        }
+        self._iterations_file.write_text(
+            json.dumps(iters_serializable, indent=2, default=str), encoding="utf-8"
+        )
+
     def load_from_disk(self) -> None:
-        if not self._runs_file.is_file():
-            return
-        try:
-            raw = json.loads(self._runs_file.read_text(encoding="utf-8"))
-            for item in raw.get("runs", []):
-                run = ActiveLearningRun(**item)
-                self._runs[run.run_id] = run
-        except Exception as exc:
-            logger.warning("Failed to restore active learning runs from disk: %s", str(exc))
+        if self._runs_file.is_file():
+            try:
+                raw = json.loads(self._runs_file.read_text(encoding="utf-8"))
+                for item in raw.get("runs", []):
+                    run = ActiveLearningRun(**item)
+                    self._runs[run.run_id] = run
+            except Exception as exc:
+                logger.warning("Failed to restore active learning runs from disk: %s", str(exc))
+
+        if self._iterations_file.is_file():
+            try:
+                raw_iters = json.loads(self._iterations_file.read_text(encoding="utf-8"))
+                for item in raw_iters.get("iterations", []):
+                    iter_obj = ActiveLearningIteration(**item)
+                    self._iterations[iter_obj.iteration_id] = iter_obj
+            except Exception as exc:
+                logger.warning("Failed to restore active learning iterations from disk: %s", str(exc))
 
 
 @lru_cache

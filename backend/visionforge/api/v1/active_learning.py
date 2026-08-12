@@ -5,8 +5,11 @@ import logging
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
+from visionforge.active_learning.loop import ActiveLearningLoopError
 from visionforge.active_learning.schemas import (
+    ActiveLearningIteration,
     ActiveLearningRun,
+    ExecuteLoopRequest,
     RankedSample,
     ReviewDecisionRequest,
     SelectionBiasReport,
@@ -147,3 +150,50 @@ def compare_strategies(payload: StrategyComparisonRequest) -> StrategyComparison
         strategy_b=payload.strategy_b,
         top_k=payload.top_k,
     )
+
+
+@router.post(
+    "/loop",
+    response_model=ActiveLearningIteration,
+    status_code=status.HTTP_201_CREATED,
+    summary="Execute end-to-end active learning retraining loop and compute metric delta",
+)
+def execute_active_learning_loop(payload: ExecuteLoopRequest) -> ActiveLearningIteration:
+    """Execute complete closed-loop retraining iteration and measure performance improvement on untouched test split."""
+    service = get_active_learning_service()
+    try:
+        return service.execute_loop(
+            active_learning_run_id=payload.active_learning_run_id,
+            new_version_tag=payload.new_version_tag,
+        )
+    except (ActiveLearningRunNotFoundError, ActiveLearningLoopError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.get(
+    "/iterations",
+    response_model=list[ActiveLearningIteration],
+    summary="List active learning retraining loop iterations",
+)
+def list_active_learning_iterations(
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> list[ActiveLearningIteration]:
+    """Retrieve paginated list of completed active learning retraining loop iterations."""
+    service = get_active_learning_service()
+    return service.list_iterations(limit=limit, offset=offset)
+
+
+@router.get(
+    "/iterations/{iteration_id}",
+    response_model=ActiveLearningIteration,
+    summary="Get single active learning iteration detail and performance verdict",
+)
+def get_active_learning_iteration(iteration_id: str) -> ActiveLearningIteration:
+    """Retrieve complete metadata and metric delta for a specific active learning iteration."""
+    service = get_active_learning_service()
+    try:
+        return service.get_iteration(iteration_id)
+    except ActiveLearningRunNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
