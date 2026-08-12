@@ -107,9 +107,40 @@ interface StrategyComparisonResult {
   summary_notes: string;
 }
 
+interface MetricDelta {
+  baseline_val: number;
+  retrained_val: number;
+  delta: number;
+  percent_change: number;
+}
+
+interface ActiveLearningIteration {
+  iteration_id: string;
+  baseline_dataset_id: string;
+  baseline_model_id: string;
+  baseline_evaluation_id: string;
+  active_learning_run_id: string;
+  reviewed_samples_count: number;
+  new_dataset_version: string;
+  retrained_run_id: string;
+  retrained_model_id: string;
+  retrained_evaluation_id: string;
+  map50_delta: MetricDelta;
+  map50_95_delta: MetricDelta;
+  precision_delta: MetricDelta;
+  recall_delta: MetricDelta;
+  verdict: "IMPROVED" | "REGRESSED" | "NEUTRAL";
+  verdict_summary: string;
+  created_at: string;
+}
+
 export default function ActiveLearningPage() {
   // Navigation Tab State
-  const [activeTab, setActiveTab] = useState<"studio" | "queue" | "bias" | "compare">("studio");
+  const [activeTab, setActiveTab] = useState<"studio" | "queue" | "bias" | "compare" | "loop">("studio");
+
+  // Loop Execution State
+  const [iteration, setIteration] = useState<ActiveLearningIteration | null>(null);
+  const [executingLoop, setExecutingLoop] = useState<boolean>(false);
 
   // Selection Generator State
   const [datasetId, setDatasetId] = useState<string>("safety_v2");
@@ -236,6 +267,33 @@ export default function ActiveLearningPage() {
     }
   };
 
+  const handleExecuteLoop = async () => {
+    if (!currentRun) return;
+    setExecutingLoop(true);
+    try {
+      const res = await fetch("/api/v1/active-learning/loop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          baseline_dataset_id: datasetId,
+          baseline_model_id: modelId,
+          active_learning_run_id: currentRun.run_id,
+          new_version_tag: "v2.1",
+        }),
+      });
+
+      if (res.ok) {
+        const data: ActiveLearningIteration = await res.json();
+        setIteration(data);
+        setActiveTab("loop");
+      }
+    } catch (err) {
+      console.error("Failed to execute retraining loop:", err);
+    } finally {
+      setExecutingLoop(false);
+    }
+  };
+
   return (
     <div className="flex flex-col min-h-screen bg-[#0a0a0a] text-neutral-200 font-inter">
       {/* Page Header */}
@@ -266,7 +324,7 @@ export default function ActiveLearningPage() {
 
       <div className="p-6 space-y-6 flex-1">
         {/* Top Tab Navigation */}
-        <div className="flex items-center bg-[#141414] border border-white/10 rounded-xl p-1 w-fit">
+        <div className="flex items-center bg-[#141414] border border-white/10 rounded-xl p-1 w-fit flex-wrap gap-1">
           <button
             onClick={() => setActiveTab("studio")}
             className={`px-4 py-2 rounded-lg text-xs font-medium transition-all ${
@@ -311,6 +369,17 @@ export default function ActiveLearningPage() {
             }`}
           >
             Strategy Comparison
+          </button>
+          <button
+            onClick={() => setActiveTab("loop")}
+            className={`px-4 py-2 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${
+              activeTab === "loop"
+                ? "bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 shadow"
+                : "text-neutral-400 hover:text-white"
+            }`}
+          >
+            <Activity className="w-3.5 h-3.5 text-emerald-400" />
+            Retraining & Performance Verdict
           </button>
         </div>
 
@@ -808,6 +877,156 @@ export default function ActiveLearningPage() {
                     <div className="text-lg font-bold text-emerald-400">{comparisonResult.diversity_delta}</div>
                   </div>
                 </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ─── TAB 5: CLOSED-LOOP RETRAINING & PERFORMANCE VERDICT ───────────── */}
+        {activeTab === "loop" && (
+          <div className="bg-[#121212] border border-white/10 rounded-xl p-6 space-y-6">
+            <div className="flex flex-wrap justify-between items-center border-b border-white/10 pb-4 gap-4">
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-neutral-400 flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-emerald-400" />
+                  Closed-Loop Retraining & Performance Improvement Verdict
+                </h3>
+                <p className="text-xs text-neutral-400 mt-1">
+                  Executes controlled model retraining with reviewed active learning samples and measures empirical accuracy delta on the untouched test split.
+                </p>
+              </div>
+
+              <Button
+                variant="primary"
+                size="sm"
+                icon={<RefreshCw className={`w-3.5 h-3.5 ${executingLoop ? "animate-spin" : ""}`} />}
+                onClick={handleExecuteLoop}
+                disabled={executingLoop || !currentRun}
+              >
+                {executingLoop ? "Retraining & Evaluating..." : "Execute Retraining Loop & Measure Delta"}
+              </Button>
+            </div>
+
+            {/* Visual Flowchart Diagram */}
+            <div className="bg-[#161616] border border-white/10 rounded-xl p-5 space-y-3">
+              <div className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider">
+                Active Learning Closed-Loop Execution Flowchart
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-2 py-4 font-mono text-[11px] text-neutral-300 bg-[#0c0c0c] border border-white/5 rounded-lg">
+                <span className="bg-blue-600/20 text-blue-400 border border-blue-500/30 px-2.5 py-1 rounded">
+                  Baseline Dataset (D0)
+                </span>
+                <span className="text-neutral-500">→</span>
+                <span className="bg-purple-600/20 text-purple-400 border border-purple-500/30 px-2.5 py-1 rounded">
+                  Train (M0)
+                </span>
+                <span className="text-neutral-500">→</span>
+                <span className="bg-cyan-600/20 text-cyan-400 border border-cyan-500/30 px-2.5 py-1 rounded">
+                  Evaluate (E0)
+                </span>
+                <span className="text-neutral-500">→</span>
+                <span className="bg-amber-600/20 text-amber-400 border border-amber-500/30 px-2.5 py-1 rounded">
+                  Active Learning & Review
+                </span>
+                <span className="text-neutral-500">→</span>
+                <span className="bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 px-2.5 py-1 rounded">
+                  New Version (D1)
+                </span>
+                <span className="text-neutral-500">→</span>
+                <span className="bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 font-bold px-2.5 py-1 rounded">
+                  Verdict (E1)
+                </span>
+              </div>
+            </div>
+
+            {/* Empirical Performance Telemetry Result */}
+            {iteration ? (
+              <div className="space-y-6">
+                {/* Verdict Header Banner */}
+                <div className="bg-[#181818] border border-emerald-500/30 rounded-xl p-5 flex flex-wrap items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs font-bold uppercase tracking-wider px-3 py-1 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-mono">
+                        VERDICT: {iteration.verdict}
+                      </span>
+                      <span className="text-xs text-neutral-400 font-mono">
+                        Iteration ID: {iteration.iteration_id}
+                      </span>
+                    </div>
+                    <p className="text-xs text-neutral-300 font-mono pt-1">
+                      {iteration.verdict_summary}
+                    </p>
+                  </div>
+
+                  <div className="text-right font-mono text-xs text-neutral-400">
+                    <div>Dataset Bump: <span className="text-white font-bold">{iteration.baseline_dataset_id} → {iteration.new_dataset_version}</span></div>
+                    <div>Active Candidates Added: <span className="text-emerald-400 font-bold">{iteration.reviewed_samples_count} accepted</span></div>
+                  </div>
+                </div>
+
+                {/* Metric Delta Comparison Table */}
+                <div className="bg-[#161616] border border-white/10 rounded-xl overflow-hidden text-xs font-mono">
+                  <div className="p-3 bg-[#1c1c1c] border-b border-white/10 font-semibold uppercase text-neutral-400 tracking-wider">
+                    Empirical Accuracy Delta (Untouched Test Split Evaluation)
+                  </div>
+                  <div className="divide-y divide-white/5">
+                    <div className="grid grid-cols-4 p-3 font-semibold text-neutral-400 bg-[#141414]">
+                      <div>Metric</div>
+                      <div>Baseline Model (M0)</div>
+                      <div>Retrained Model (M1)</div>
+                      <div>Performance Delta (Δ)</div>
+                    </div>
+
+                    <div className="grid grid-cols-4 p-3 text-neutral-200 hover:bg-white/5 transition-colors">
+                      <div className="font-bold text-white">mAP@50</div>
+                      <div>{iteration.map50_delta.baseline_val.toFixed(4)}</div>
+                      <div>{iteration.map50_delta.retrained_val.toFixed(4)}</div>
+                      <div className="text-emerald-400 font-bold">
+                        +{iteration.map50_delta.delta.toFixed(4)} (+{iteration.map50_delta.percent_change}%)
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-4 p-3 text-neutral-200 hover:bg-white/5 transition-colors">
+                      <div className="font-bold text-white">mAP@50:95</div>
+                      <div>{iteration.map50_95_delta.baseline_val.toFixed(4)}</div>
+                      <div>{iteration.map50_95_delta.retrained_val.toFixed(4)}</div>
+                      <div className="text-emerald-400 font-bold">
+                        +{iteration.map50_95_delta.delta.toFixed(4)} (+{iteration.map50_95_delta.percent_change}%)
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-4 p-3 text-neutral-200 hover:bg-white/5 transition-colors">
+                      <div className="font-bold text-white">Precision</div>
+                      <div>{iteration.precision_delta.baseline_val.toFixed(4)}</div>
+                      <div>{iteration.precision_delta.retrained_val.toFixed(4)}</div>
+                      <div className="text-emerald-400 font-bold">
+                        +{iteration.precision_delta.delta.toFixed(4)} (+{iteration.precision_delta.percent_change}%)
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-4 p-3 text-neutral-200 hover:bg-white/5 transition-colors">
+                      <div className="font-bold text-white">Recall</div>
+                      <div>{iteration.recall_delta.baseline_val.toFixed(4)}</div>
+                      <div>{iteration.recall_delta.retrained_val.toFixed(4)}</div>
+                      <div className="text-emerald-400 font-bold">
+                        +{iteration.recall_delta.delta.toFixed(4)} (+{iteration.recall_delta.percent_change}%)
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-emerald-950/20 border border-emerald-500/20 rounded-xl p-4 flex items-center justify-between text-xs font-mono text-emerald-400">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 shrink-0" />
+                    <span>Scientific Verification: Retrained evaluation performed on identical, untouched evaluation test split.</span>
+                  </div>
+                  <span className="text-neutral-400 text-[10px]">Test Set Immutability Guaranteed</span>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-[#161616] border border-white/5 rounded-xl p-12 text-center text-xs text-neutral-500 font-mono space-y-3">
+                <Activity className="w-8 h-8 mx-auto text-emerald-500" />
+                <div>Click &apos;Execute Retraining Loop &amp; Measure Delta&apos; to evaluate performance improvement after active learning.</div>
               </div>
             )}
           </div>
