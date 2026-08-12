@@ -24,8 +24,8 @@ def compute_iou(bbox1: list[float], bbox2: list[float]) -> float:
     if intersection == 0.0:
         return 0.0
 
-    area1 = max(0.0, bbox1[2] - bbox1[0]) * max(0.0, bbox1[3] - bbox1[0])
-    area2 = max(0.0, bbox2[2] - bbox2[0]) * max(0.0, bbox2[3] - bbox2[0])
+    area1 = max(0.0, bbox1[2] - bbox1[0]) * max(0.0, bbox1[3] - bbox1[1])
+    area2 = max(0.0, bbox2[2] - bbox2[0]) * max(0.0, bbox2[3] - bbox2[1])
     union = area1 + area2 - intersection
 
     return intersection / max(1e-6, union)
