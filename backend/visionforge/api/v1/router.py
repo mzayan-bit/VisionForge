@@ -6,6 +6,7 @@ from visionforge.api.v1.active_learning import router as active_learning_router
 from visionforge.api.v1.datasets import router as datasets_router
 from visionforge.api.v1.embeddings import router as embeddings_router
 from visionforge.api.v1.evaluation import router as evaluation_router
+from visionforge.api.v1.events import router as events_router
 from visionforge.api.v1.experiments import router as experiments_router
 from visionforge.api.v1.explorer import router as explorer_router
 from visionforge.api.v1.health import router as health_router
@@ -32,5 +33,6 @@ router.include_router(inference_router)
 router.include_router(experiments_router)
 router.include_router(active_learning_router)
 router.include_router(video_router)
+router.include_router(events_router)
 
 __all__ = ["router"]
