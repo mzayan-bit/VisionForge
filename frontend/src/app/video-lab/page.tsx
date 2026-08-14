@@ -18,8 +18,11 @@ import {
   FileText,
   Filter,
   FlaskConical,
+  HelpCircle,
+  History,
   Layers,
   MapPin,
+  MessageSquare,
   Move,
   Play,
   Pause,
@@ -138,6 +141,45 @@ interface EventEvidence {
   snapshot_notes: string;
 }
 
+interface QueryEvidenceItem {
+  event_id?: string;
+  track_id?: number;
+  timestamp_sec: number;
+  frame_idx: number;
+  region_id?: string;
+  description: string;
+  action_link: string;
+}
+
+interface VisualQueryResult {
+  query_id: string;
+  original_query: string;
+  structured_query: Record<string, any>;
+  status: "SUCCESS" | "AMBIGUOUS" | "UNSUPPORTED" | "VALIDATION_ERROR";
+  result_type: string;
+  records: Record<string, any>[];
+  summary: string;
+  evidence: QueryEvidenceItem[];
+  interpretation_explanation: string;
+  interpretation_time_ms: number;
+  execution_time_ms: number;
+  total_query_time_ms: number;
+  source_run_id: string;
+  reproducibility_hash: string;
+  created_at: string;
+}
+
+interface QueryHistoryItem {
+  query_id: string;
+  original_query: string;
+  query_type: string;
+  run_id: string;
+  status: string;
+  results_count: number;
+  total_query_time_ms: number;
+  created_at: string;
+}
+
 export default function VideoLabPage() {
   // Video Controls State
   const [videoId, setVideoId] = useState<string>("sample_traffic_01");
@@ -154,7 +196,6 @@ export default function VideoLabPage() {
   const [currentRun, setCurrentRun] = useState<VideoInferenceRun | null>(null);
   const [selectedTrackId, setSelectedTrackId] = useState<number | null>(null);
   const [showTrajectory, setShowTrajectory] = useState<boolean>(true);
-  const [classFilter, setClassFilter] = useState<string>("ALL");
   const [loading, setLoading] = useState<boolean>(false);
 
   // Temporal Event Intelligence State
@@ -166,13 +207,22 @@ export default function VideoLabPage() {
   const [showAddRegionModal, setShowAddRegionModal] = useState<boolean>(false);
   const [newRegionName, setNewRegionName] = useState<string>("Loading Zone A");
 
-  // Event Rules Configuration State
-  const [dwellThreshold, setDwellThreshold] = useState<number>(3.0);
-  const [proximityThreshold, setProximityThreshold] = useState<number>(100.0);
-  const [generatingEvents, setGeneratingEvents] = useState<boolean>(false);
+  // Visual Query Layer State
+  const [userQuestion, setUserQuestion] = useState<string>("");
+  const [queryResult, setQueryResult] = useState<VisualQueryResult | null>(null);
+  const [queryHistory, setQueryHistory] = useState<QueryHistoryItem[]>([]);
+  const [askingQuery, setAskingQuery] = useState<boolean>(false);
+  const [showQueryBuilderModal, setShowQueryBuilderModal] = useState<boolean>(false);
+  const [showHistoryDrawer, setShowHistoryDrawer] = useState<boolean>(false);
+
+  // Query Builder Form State
+  const [qbQueryType, setQbQueryType] = useState<string>("EVENT_SEARCH");
+  const [qbEventType, setQbEventType] = useState<string>("OBJECT_ENTERED_REGION");
+  const [qbClass, setQbClass] = useState<string>("person");
+  const [qbRegion, setQbRegion] = useState<string>("Loading Zone A");
+  const [qbMinDuration, setQbMinDuration] = useState<number>(3.0);
 
   useEffect(() => {
-    // Run initial video inference pipeline on mount
     handleRunVideoInference();
   }, []);
 
@@ -216,9 +266,9 @@ export default function VideoLabPage() {
           setSelectedTrackId(data.tracks[0].track_id);
         }
 
-        // Fetch Regions & Generate Events
         await fetchRegions(data.video_id);
         await handleGenerateEvents(data.run_id);
+        await fetchQueryHistory();
       }
     } catch (err) {
       console.error("Failed to run video inference pipeline:", err);
@@ -280,7 +330,6 @@ export default function VideoLabPage() {
   };
 
   const handleGenerateEvents = async (runId: string) => {
-    setGeneratingEvents(true);
     try {
       const res = await fetch("/api/v1/events/generate", {
         method: "POST",
@@ -288,8 +337,8 @@ export default function VideoLabPage() {
         body: JSON.stringify({
           run_id: runId,
           config: {
-            dwell_threshold_sec: dwellThreshold,
-            proximity_threshold_px: proximityThreshold,
+            dwell_threshold_sec: 3.0,
+            proximity_threshold_px: 100.0,
           },
         }),
       });
@@ -303,8 +352,89 @@ export default function VideoLabPage() {
       }
     } catch (err) {
       console.error("Failed to generate temporal events:", err);
+    }
+  };
+
+  const handleAskQuery = async (queryStr?: string) => {
+    const textToSubmit = queryStr || userQuestion;
+    if (!textToSubmit || !currentRun) return;
+
+    setAskingQuery(true);
+    try {
+      const res = await fetch("/api/v1/query/ask", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query_text: textToSubmit,
+          run_id: currentRun.run_id,
+        }),
+      });
+
+      if (res.ok) {
+        const result: VisualQueryResult = await res.json();
+        setQueryResult(result);
+        setUserQuestion(textToSubmit);
+        await fetchQueryHistory();
+
+        // If evidence exists, auto seek to first evidence item
+        if (result.evidence.length > 0) {
+          const ev = result.evidence[0];
+          setCurrentTimeSec(ev.timestamp_sec);
+          if (ev.track_id !== undefined) {
+            setSelectedTrackId(ev.track_id);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Failed to execute visual query:", err);
     } finally {
-      setGeneratingEvents(false);
+      setAskingQuery(false);
+    }
+  };
+
+  const handleRunStructuredQueryBuilder = async () => {
+    if (!currentRun) return;
+    setAskingQuery(true);
+    try {
+      const res = await fetch("/api/v1/query/execute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: {
+            query_id: `vq_builder_${Date.now()}`,
+            run_id: currentRun.run_id,
+            query_type: qbQueryType,
+            event_type: qbEventType,
+            object_class: qbClass,
+            region_name: qbRegion,
+            min_duration_sec: qbMinDuration,
+            original_text: `Visual Query: ${qbEventType} in ${qbRegion}`,
+          },
+        }),
+      });
+
+      if (res.ok) {
+        const result: VisualQueryResult = await res.json();
+        setQueryResult(result);
+        setShowQueryBuilderModal(false);
+        await fetchQueryHistory();
+      }
+    } catch (err) {
+      console.error("Failed to run query builder:", err);
+    } finally {
+      setAskingQuery(false);
+    }
+  };
+
+  const fetchQueryHistory = async () => {
+    try {
+      const res = await fetch("/api/v1/query/history");
+      if (res.ok) {
+        const history: QueryHistoryItem[] = await res.json();
+        setQueryHistory(history);
+      }
+    } catch (err) {
+      console.error("Failed to fetch query history:", err);
     }
   };
 
@@ -323,37 +453,49 @@ export default function VideoLabPage() {
   const selectedTrack = currentRun?.tracks.find((t) => t.track_id === selectedTrackId);
   const selectedEvent = events.find((e) => e.event_id === selectedEventId);
 
-  // Filter active tracks at current timestamp
   const activeTracksAtCurrentTime = currentRun?.tracks.filter(
     (t) =>
       currentTimeSec >= t.first_timestamp_sec && currentTimeSec <= t.last_timestamp_sec + 0.5
   ) || [];
 
-  // Filter events stream
   const filteredEvents = events.filter((e) => {
     if (eventFilterType !== "ALL" && e.event_type !== eventFilterType) return false;
     return true;
   });
 
+  const SAMPLE_QUESTIONS = [
+    "Which objects entered Loading Zone A?",
+    "How many people were present at 5 seconds?",
+    "Which track stayed longest in Loading Zone A?",
+    "Show events involving Track 1.",
+    "Which objects became close?",
+    "Show dwell events longer than 3 seconds.",
+  ];
+
   return (
     <div className="flex flex-col min-h-screen bg-[#0a0a0a] text-neutral-200 font-inter">
       {/* Page Header */}
       <PageHeader
-        title="Video Lab & Temporal Event Intelligence"
-        description="Transform low-level tracks into explainable temporal events: Region Intersections, Dwell Intervals, Proximity Events & Chronological Timeline"
-        breadcrumbs={["VisionForge", "Video Lab"]}
+        title="Video Lab & Ask VisionForge Query Layer"
+        description="Structured Computer Vision Query Layer: Natural Language Questions, Verified Visual Evidence & Query Builder"
+        breadcrumbs={["VisionForge", "Video Lab", "Ask VisionForge"]}
         actions={
           <div className="flex items-center gap-2">
-            <a
-              href={`data:text/csv;charset=utf-8,${encodeURIComponent(
-                currentRun ? `event_id,event_type,start_sec\n${events.map((e) => `${e.event_id},${e.event_type},${e.start_timestamp_sec}`).join("\n")}` : ""
-              )}`}
-              download={`temporal_events_${currentRun?.run_id || "export"}.csv`}
+            <Button
+              variant="secondary"
+              icon={<History className="w-4 h-4 text-purple-400" />}
+              onClick={() => setShowHistoryDrawer(true)}
             >
-              <Button variant="secondary" icon={<Download className="w-4 h-4 text-emerald-400" />}>
-                Export Event CSV
-              </Button>
-            </a>
+              Query History ({queryHistory.length})
+            </Button>
+
+            <Button
+              variant="secondary"
+              icon={<Sliders className="w-4 h-4 text-blue-400" />}
+              onClick={() => setShowQueryBuilderModal(true)}
+            >
+              Visual Query Builder
+            </Button>
 
             <Button
               variant="primary"
@@ -368,79 +510,141 @@ export default function VideoLabPage() {
       />
 
       <div className="p-6 space-y-6 flex-1">
-        {/* Controls Toolbar */}
-        <div className="bg-[#121212] border border-white/10 rounded-xl p-4 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-4 text-xs">
-            {/* Video Asset Dropdown */}
-            <div className="flex items-center gap-2">
-              <Video className="w-4 h-4 text-cyan-400" />
-              <span className="text-neutral-400 font-medium">Video Asset:</span>
-              <select
-                value={videoId}
-                onChange={(e) => setVideoId(e.target.value)}
-                className="bg-[#1a1a1a] border border-white/10 rounded-lg px-3 py-1.5 text-white font-mono"
-              >
-                <option value="sample_traffic_01">sample_traffic_01.mp4 (10.0s, 30 FPS)</option>
-                <option value="factory_safety_02">factory_safety_02.mp4 (15.0s, 30 FPS)</option>
-                <option value="drone_surveillance_03">drone_surveillance_03.mp4 (20.0s, 30 FPS)</option>
-              </select>
-            </div>
-
-            {/* Model Dropdown */}
-            <div className="flex items-center gap-2">
-              <Cpu className="w-4 h-4 text-indigo-400" />
-              <span className="text-neutral-400 font-medium">Model:</span>
-              <select
-                value={modelId}
-                onChange={(e) => setModelId(e.target.value)}
-                className="bg-[#1a1a1a] border border-white/10 rounded-lg px-3 py-1.5 text-white font-mono"
-              >
-                <option value="yolo11s.pt">YOLO11s Safety Baseline</option>
-                <option value="rtdetr_l.pt">RT-DETR-L Safety Transformer</option>
-              </select>
-            </div>
-
-            {/* Tracker Dropdown */}
-            <div className="flex items-center gap-2">
-              <Compass className="w-4 h-4 text-amber-400" />
-              <span className="text-neutral-400 font-medium">Tracker:</span>
-              <select
-                value={trackerName}
-                onChange={(e) => setTrackerName(e.target.value)}
-                className="bg-[#1a1a1a] border border-white/10 rounded-lg px-3 py-1.5 text-white font-mono"
-              >
-                <option value="ByteTrack">ByteTrack (IoU + Kalman)</option>
-              </select>
-            </div>
+        {/* Ask VisionForge Natural Language Search Panel */}
+        <div className="bg-[#121212] border border-blue-500/30 rounded-xl p-5 space-y-4 shadow-xl">
+          <div className="flex justify-between items-center border-b border-white/10 pb-3">
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-blue-400 flex items-center gap-2">
+              <MessageSquare className="w-4.5 h-4.5 text-blue-400" />
+              Ask VisionForge Visual Query Engine
+            </h3>
+            <span className="text-[10px] font-mono text-neutral-500 bg-[#1a1a1a] px-2 py-1 rounded border border-white/5">
+              Read-Only Security Guarantee | Evidence Backed
+            </span>
           </div>
 
-          <div className="flex items-center gap-2">
+          {/* Search Bar Input */}
+          <div className="flex items-center gap-3">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-500" />
+              <input
+                type="text"
+                value={userQuestion}
+                onChange={(e) => setUserQuestion(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleAskQuery()}
+                placeholder="Ask a question (e.g. 'Which objects entered Loading Zone A?', 'How many people at 5 seconds?')"
+                className="w-full bg-[#181818] border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500 font-mono"
+              />
+            </div>
             <Button
-              variant="secondary"
-              size="sm"
-              icon={<Plus className="w-3.5 h-3.5 text-blue-400" />}
-              onClick={() => setShowAddRegionModal(true)}
+              variant="primary"
+              icon={<Zap className="w-4 h-4" />}
+              onClick={() => handleAskQuery()}
+              disabled={askingQuery || !userQuestion}
             >
-              Add Region ROI
-            </Button>
-
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={<RefreshCw className={`w-3.5 h-3.5 ${generatingEvents ? "animate-spin" : ""}`} />}
-              onClick={() => currentRun && handleGenerateEvents(currentRun.run_id)}
-              disabled={generatingEvents || !currentRun}
-            >
-              Re-Detect Events
+              {askingQuery ? "Analyzing..." : "Ask Question"}
             </Button>
           </div>
+
+          {/* Quick Question Chips */}
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <span className="text-[10px] font-mono text-neutral-500 flex items-center gap-1">
+              <Sparkles className="w-3 h-3 text-amber-400" /> Quick Queries:
+            </span>
+            {SAMPLE_QUESTIONS.map((q, idx) => (
+              <button
+                key={idx}
+                onClick={() => handleAskQuery(q)}
+                className="text-[10px] font-mono px-2.5 py-1 rounded-full bg-[#1a1a1a] hover:bg-blue-600/20 text-neutral-300 hover:text-blue-300 border border-white/5 hover:border-blue-500/40 transition-all"
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+
+          {/* Interpreted Query & Result Display */}
+          {queryResult && (
+            <div className="mt-4 bg-[#161616] border border-white/10 rounded-xl p-4 space-y-3 font-mono text-xs">
+              <div className="flex flex-wrap justify-between items-center border-b border-white/10 pb-2 gap-2">
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                      queryResult.status === "SUCCESS"
+                        ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                        : queryResult.status === "AMBIGUOUS"
+                        ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
+                        : "bg-purple-500/20 text-purple-400 border border-purple-500/30"
+                    }`}
+                  >
+                    STATUS: {queryResult.status}
+                  </span>
+                  <span className="text-neutral-400 text-[11px]">
+                    Query ID: {queryResult.query_id}
+                  </span>
+                </div>
+
+                <div className="text-[10px] text-neutral-500">
+                  Latency: {queryResult.total_query_time_ms}ms | Records: {queryResult.records.length}
+                </div>
+              </div>
+
+              {/* Interpretation Explanation Badge */}
+              <div className="bg-[#1c1c1c] p-2.5 rounded border border-white/5 text-blue-300 text-[11px]">
+                <span className="font-bold text-neutral-400">Interpreted Query DSL:</span>{" "}
+                {queryResult.interpretation_explanation}
+              </div>
+
+              {/* Natural Language Summary Answer */}
+              <div className="p-3 bg-blue-950/20 border border-blue-500/30 rounded-lg text-white font-bold text-xs leading-relaxed">
+                Answer: {queryResult.summary}
+              </div>
+
+              {/* Evidence Stream Cards */}
+              {queryResult.evidence.length > 0 && (
+                <div className="space-y-2 pt-2">
+                  <div className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                    Verified Visual Evidence ({queryResult.evidence.length} sources)
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {queryResult.evidence.map((ev, idx) => (
+                      <div
+                        key={idx}
+                        className="bg-[#1a1a1a] p-3 rounded-lg border border-white/5 space-y-2 hover:border-blue-500/40 transition-all"
+                      >
+                        <div className="flex justify-between items-center text-[10px]">
+                          <span className="text-blue-400 font-bold">t = {ev.timestamp_sec.toFixed(1)}s</span>
+                          {ev.track_id !== undefined && (
+                            <span className="text-purple-400 font-bold">Track #{ev.track_id}</span>
+                          )}
+                        </div>
+
+                        <p className="text-[10px] text-neutral-300 line-clamp-2 leading-relaxed">
+                          {ev.description}
+                        </p>
+
+                        <button
+                          onClick={() => {
+                            setCurrentTimeSec(ev.timestamp_sec);
+                            if (ev.track_id !== undefined) setSelectedTrackId(ev.track_id);
+                          }}
+                          className="w-full text-center py-1 rounded bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 text-[10px] border border-blue-500/30 transition-all font-bold"
+                        >
+                          [ View Evidence at t={ev.timestamp_sec.toFixed(1)}s ]
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
-        {/* Main Workspace Layout */}
+        {/* Video Player & Event Stream Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left Column: Video Player & Region Overlay */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Player Container */}
             <div className="bg-[#121212] border border-white/10 rounded-xl overflow-hidden space-y-4 p-4">
               <div className="flex justify-between items-center border-b border-white/10 pb-3">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-neutral-400 flex items-center gap-2">
@@ -452,12 +656,10 @@ export default function VideoLabPage() {
                 </span>
               </div>
 
-              {/* Video Overlay Canvas Screen */}
+              {/* Video Overlay Screen */}
               <div className="relative aspect-video bg-[#080808] border border-white/10 rounded-lg overflow-hidden flex flex-col items-center justify-center">
-                {/* Background Grid Pattern */}
                 <div className="absolute inset-0 bg-[radial-gradient(#1f1f1f_1px,transparent_1px)] [background-size:16px_16px] opacity-40" />
 
-                {/* SVG Layer: Regions & Trajectories */}
                 <svg className="absolute inset-0 w-full h-full pointer-events-none">
                   {/* Region ROI Overlays */}
                   {regions.map((reg) => (
@@ -540,7 +742,6 @@ export default function VideoLabPage() {
                   })}
                 </svg>
 
-                {/* Player Center Status Telemetry */}
                 <div className="z-10 text-center space-y-1">
                   <div className="text-xs font-mono text-neutral-400">
                     Video Stream ({currentRun?.processed_frames || 0} sampled frames)
@@ -608,97 +809,16 @@ export default function VideoLabPage() {
                 </div>
               </div>
             </div>
-
-            {/* Selected Event Inspector & Evidence Actions */}
-            {selectedEvent ? (
-              <div className="bg-[#121212] border border-white/10 rounded-xl p-5 space-y-4">
-                <div className="flex flex-wrap justify-between items-center border-b border-white/10 pb-3 gap-2">
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-blue-600/20 text-blue-400 border border-blue-500/30">
-                      {selectedEvent.event_type}
-                    </span>
-                    <span className="text-xs font-mono text-neutral-400">
-                      ID: {selectedEvent.event_id}
-                    </span>
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-bold">
-                      Reliability: {selectedEvent.reliability}
-                    </span>
-                  </div>
-
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    icon={<Eye className="w-3.5 h-3.5" />}
-                    onClick={() => handleInspectEvidence(selectedEvent.event_id)}
-                  >
-                    Inspect Evidence
-                  </Button>
-                </div>
-
-                <div className="text-xs text-neutral-200 font-mono bg-[#161616] p-3 rounded-lg border border-white/5 leading-relaxed">
-                  {selectedEvent.description}
-                </div>
-
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 font-mono text-xs">
-                  <div className="bg-[#181818] p-3 rounded-lg border border-white/5 space-y-1">
-                    <div className="text-neutral-400 text-[10px]">Start Timestamp</div>
-                    <div className="text-sm font-bold text-white">
-                      t = {selectedEvent.start_timestamp_sec.toFixed(1)}s
-                    </div>
-                  </div>
-
-                  <div className="bg-[#181818] p-3 rounded-lg border border-white/5 space-y-1">
-                    <div className="text-neutral-400 text-[10px]">Duration</div>
-                    <div className="text-sm font-bold text-blue-400">
-                      {selectedEvent.duration_sec.toFixed(1)}s
-                    </div>
-                  </div>
-
-                  <div className="bg-[#181818] p-3 rounded-lg border border-white/5 space-y-1">
-                    <div className="text-neutral-400 text-[10px]">Source Tracks</div>
-                    <div className="text-sm font-bold text-purple-400">
-                      {selectedEvent.source_track_ids.map((id) => `#${id}`).join(", ") || "N/A"}
-                    </div>
-                  </div>
-
-                  <div className="bg-[#181818] p-3 rounded-lg border border-white/5 space-y-1">
-                    <div className="text-neutral-400 text-[10px]">Region ROI</div>
-                    <div className="text-sm font-bold text-amber-400">
-                      {selectedEvent.event_params.region_name || "N/A"}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="p-8 text-center text-xs text-neutral-500 bg-[#121212] border border-white/10 rounded-xl font-mono">
-                Click any event in the timeline to inspect evidence and seek player timestamp.
-              </div>
-            )}
           </div>
 
-          {/* Right Column: Chronological Event Timeline Stream */}
+          {/* Right Column: Event Timeline & Regions */}
           <div className="space-y-6">
-            {/* Event Timeline Stream */}
             <div className="bg-[#121212] border border-white/10 rounded-xl overflow-hidden flex flex-col h-[560px]">
               <div className="p-4 border-b border-white/10 flex justify-between items-center bg-[#161616] shrink-0">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-neutral-400 flex items-center gap-2">
                   <Clock className="w-4 h-4 text-emerald-400" />
                   Chronological Event Stream ({filteredEvents.length})
                 </h3>
-
-                <select
-                  value={eventFilterType}
-                  onChange={(e) => setEventFilterType(e.target.value)}
-                  className="bg-[#1a1a1a] border border-white/10 rounded px-2 py-1 text-[10px] text-neutral-300 font-mono"
-                >
-                  <option value="ALL">All Event Types</option>
-                  <option value="OBJECT_ENTERED_REGION">Entered Region</option>
-                  <option value="OBJECT_LEFT_REGION">Left Region</option>
-                  <option value="OBJECT_DWELLED">Object Dwelled</option>
-                  <option value="OBJECT_STOPPED">Object Stopped</option>
-                  <option value="OBJECTS_BECAME_CLOSE">Became Close</option>
-                  <option value="TRACK_STARTED">Track Started</option>
-                </select>
               </div>
 
               <div className="p-3 space-y-2 overflow-y-auto flex-1 font-mono text-xs">
@@ -722,168 +842,142 @@ export default function VideoLabPage() {
                       }`}
                     >
                       <div className="flex justify-between items-center">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[11px] font-bold text-blue-400">
-                            t={evt.start_timestamp_sec.toFixed(1)}s
-                          </span>
-                          <span
-                            className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase ${
-                              evt.event_type.includes("DWELLED")
-                                ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
-                                : evt.event_type.includes("ENTERED")
-                                ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                                : evt.event_type.includes("CLOSE")
-                                ? "bg-purple-500/20 text-purple-400 border border-purple-500/30"
-                                : "bg-neutral-800 text-neutral-300"
-                            }`}
-                          >
-                            {evt.event_type.replace("OBJECT_", "").replace("_REGION", "")}
-                          </span>
-                        </div>
-
-                        {evt.duration_sec > 0 && (
-                          <span className="text-[10px] text-neutral-500">
-                            {evt.duration_sec.toFixed(1)}s duration
-                          </span>
-                        )}
+                        <span className="text-[11px] font-bold text-blue-400">
+                          t={evt.start_timestamp_sec.toFixed(1)}s
+                        </span>
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-300">
+                          {evt.event_type}
+                        </span>
                       </div>
-
                       <p className="text-[11px] text-neutral-300 line-clamp-2 leading-relaxed">
                         {evt.description}
                       </p>
                     </div>
                   );
                 })}
-
-                {filteredEvents.length === 0 && (
-                  <div className="py-12 text-center text-xs text-neutral-500 font-mono">
-                    No temporal events match current filter.
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Regions List Panel */}
-            <div className="bg-[#121212] border border-white/10 rounded-xl p-4 space-y-3 font-mono text-xs">
-              <div className="flex justify-between items-center border-b border-white/10 pb-2">
-                <h4 className="font-semibold text-neutral-300 flex items-center gap-2">
-                  <MapPin className="w-4 h-4 text-blue-400" />
-                  Active Regions ROI ({regions.length})
-                </h4>
-                <button
-                  onClick={() => setShowAddRegionModal(true)}
-                  className="text-[10px] text-blue-400 hover:underline"
-                >
-                  + Add ROI
-                </button>
-              </div>
-
-              <div className="space-y-2">
-                {regions.map((reg) => (
-                  <div
-                    key={reg.region_id}
-                    className="flex justify-between items-center bg-[#181818] p-2.5 rounded border border-white/5"
-                  >
-                    <div className="space-y-0.5">
-                      <div className="font-bold text-white text-xs">{reg.name}</div>
-                      <div className="text-[10px] text-neutral-500">{reg.shape_type} ROI</div>
-                    </div>
-
-                    <button
-                      onClick={() => handleDeleteRegion(reg.region_id)}
-                      className="p-1 rounded hover:bg-red-500/20 text-neutral-500 hover:text-red-400"
-                      title="Delete Region"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ))}
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Add Region Modal */}
-      {showAddRegionModal && (
+      {/* Visual Query Builder Modal */}
+      {showQueryBuilderModal && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-          <div className="bg-[#121212] border border-white/10 rounded-xl p-6 max-w-md w-full space-y-4 font-mono text-xs">
-            <h3 className="text-sm font-semibold text-white">Create Region of Interest (ROI)</h3>
-            <div>
-              <label className="text-neutral-400 block mb-1">Region Name</label>
-              <input
-                type="text"
-                value={newRegionName}
-                onChange={(e) => setNewRegionName(e.target.value)}
-                className="w-full bg-[#1a1a1a] border border-white/10 rounded px-3 py-2 text-white"
-              />
+          <div className="bg-[#121212] border border-white/10 rounded-xl p-6 max-w-lg w-full space-y-4 font-mono text-xs">
+            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+              <Sliders className="w-4 h-4 text-blue-400" />
+              Visual Query Builder (Structured DSL)
+            </h3>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-neutral-400 block mb-1">Query Type</label>
+                <select
+                  value={qbQueryType}
+                  onChange={(e) => setQbQueryType(e.target.value)}
+                  className="w-full bg-[#1a1a1a] border border-white/10 rounded px-3 py-2 text-white"
+                >
+                  <option value="EVENT_SEARCH">EVENT_SEARCH</option>
+                  <option value="TRACK_SEARCH">TRACK_SEARCH</option>
+                  <option value="OBJECT_COUNT">OBJECT_COUNT</option>
+                  <option value="TRACK_AGGREGATION">TRACK_AGGREGATION</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-neutral-400 block mb-1">Event Type</label>
+                <select
+                  value={qbEventType}
+                  onChange={(e) => setQbEventType(e.target.value)}
+                  className="w-full bg-[#1a1a1a] border border-white/10 rounded px-3 py-2 text-white"
+                >
+                  <option value="OBJECT_ENTERED_REGION">OBJECT_ENTERED_REGION</option>
+                  <option value="OBJECT_LEFT_REGION">OBJECT_LEFT_REGION</option>
+                  <option value="OBJECT_DWELLED">OBJECT_DWELLED</option>
+                  <option value="OBJECT_STOPPED">OBJECT_STOPPED</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-neutral-400 block mb-1">Object Class</label>
+                <select
+                  value={qbClass}
+                  onChange={(e) => setQbClass(e.target.value)}
+                  className="w-full bg-[#1a1a1a] border border-white/10 rounded px-3 py-2 text-white"
+                >
+                  <option value="person">person</option>
+                  <option value="car">car</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-neutral-400 block mb-1">Target Region</label>
+                <select
+                  value={qbRegion}
+                  onChange={(e) => setQbRegion(e.target.value)}
+                  className="w-full bg-[#1a1a1a] border border-white/10 rounded px-3 py-2 text-white"
+                >
+                  {regions.map((r) => (
+                    <option key={r.region_id} value={r.name}>
+                      {r.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
-            <div className="text-neutral-500 text-[10px]">
-              Preset Box Coordinates: [[200, 150], [1200, 700]] (Pixel space)
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="secondary" size="sm" onClick={() => setShowAddRegionModal(false)}>
+
+            <div className="flex justify-end gap-2 pt-3">
+              <Button variant="secondary" size="sm" onClick={() => setShowQueryBuilderModal(false)}>
                 Cancel
               </Button>
-              <Button variant="primary" size="sm" onClick={handleAddDefaultRegion}>
-                Save Region ROI
+              <Button variant="primary" size="sm" onClick={handleRunStructuredQueryBuilder}>
+                Run Structured Query
               </Button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Inspect Evidence Modal */}
-      {inspectEvidenceModal && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-          <div className="bg-[#121212] border border-white/10 rounded-xl p-6 max-w-2xl w-full space-y-4 font-mono text-xs">
+      {/* Query History Drawer */}
+      {showHistoryDrawer && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-end">
+          <div className="bg-[#121212] border-l border-white/10 w-full max-w-md h-full p-6 space-y-4 font-mono text-xs overflow-y-auto">
             <div className="flex justify-between items-center border-b border-white/10 pb-3">
               <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                <Eye className="w-4 h-4 text-blue-400" />
-                Visual Verification Evidence: Event #{inspectEvidenceModal.event_id}
+                <History className="w-4 h-4 text-purple-400" />
+                Query Execution History
               </h3>
-              <button
-                onClick={() => setInspectEvidenceModal(null)}
-                className="text-neutral-400 hover:text-white"
-              >
+              <button onClick={() => setShowHistoryDrawer(false)} className="text-neutral-400 hover:text-white">
                 ✕
               </button>
             </div>
 
-            <div className="grid grid-cols-3 gap-3 text-center">
-              <div className="bg-[#181818] p-4 rounded-lg border border-white/5 space-y-2">
-                <div className="text-[10px] text-neutral-400">Frame Before</div>
-                <div className="text-xs font-bold text-white">#{inspectEvidenceModal.frame_before_idx}</div>
-                <div className="h-20 bg-[#0a0a0a] rounded border border-white/5 flex items-center justify-center text-[10px] text-neutral-600">
-                  Pre-Onset Frame
+            <div className="space-y-2">
+              {queryHistory.map((item) => (
+                <div
+                  key={item.query_id}
+                  className="p-3 bg-[#181818] border border-white/5 rounded-lg space-y-1.5 hover:border-purple-500/40 transition-all"
+                >
+                  <div className="flex justify-between items-center">
+                    <span className="text-purple-400 font-bold">{item.query_type}</span>
+                    <span className="text-[10px] text-neutral-500">{item.total_query_time_ms}ms</span>
+                  </div>
+                  <p className="text-white font-semibold text-xs">{item.original_query}</p>
+                  <div className="flex justify-between items-center pt-1 text-[10px] text-neutral-500">
+                    <span>Records: {item.results_count}</span>
+                    <button
+                      onClick={() => {
+                        setShowHistoryDrawer(false);
+                        handleAskQuery(item.original_query);
+                      }}
+                      className="text-blue-400 hover:underline"
+                    >
+                      Re-run Query
+                    </button>
+                  </div>
                 </div>
-              </div>
-
-              <div className="bg-[#181818] p-4 rounded-lg border border-blue-500/40 space-y-2">
-                <div className="text-[10px] text-blue-400 font-bold">Event Frame</div>
-                <div className="text-xs font-bold text-blue-400">#{inspectEvidenceModal.event_frame_idx}</div>
-                <div className="h-20 bg-[#0a0a0a] rounded border border-blue-500/30 flex items-center justify-center text-[10px] text-blue-400 font-bold">
-                  Event Onset
-                </div>
-              </div>
-
-              <div className="bg-[#181818] p-4 rounded-lg border border-white/5 space-y-2">
-                <div className="text-[10px] text-neutral-400">Frame After</div>
-                <div className="text-xs font-bold text-white">#{inspectEvidenceModal.frame_after_idx}</div>
-                <div className="h-20 bg-[#0a0a0a] rounded border border-white/5 flex items-center justify-center text-[10px] text-neutral-600">
-                  Post-Event Frame
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-[#161616] p-3 rounded-lg border border-white/5 text-neutral-300 text-xs">
-              {inspectEvidenceModal.snapshot_notes}
-            </div>
-
-            <div className="flex justify-end">
-              <Button variant="secondary" size="sm" onClick={() => setInspectEvidenceModal(null)}>
-                Close Evidence Inspector
-              </Button>
+              ))}
             </div>
           </div>
         </div>
