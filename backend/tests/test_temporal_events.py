@@ -13,7 +13,6 @@ from visionforge.events.schemas import (
     RegionOfInterest,
     RegionShape,
 )
-from visionforge.events.service import TemporalEventService
 from visionforge.main import app
 from visionforge.video.schemas import FrameSamplingConfig, Track, TrajectoryPoint, VideoInferenceRun
 
