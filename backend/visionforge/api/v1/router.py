@@ -13,6 +13,7 @@ from visionforge.api.v1.health import router as health_router
 from visionforge.api.v1.inference import router as inference_router
 from visionforge.api.v1.memory import router as memory_router
 from visionforge.api.v1.models import router as models_router
+from visionforge.api.v1.query import router as query_router
 from visionforge.api.v1.search import router as search_router
 from visionforge.api.v1.system import router as system_router
 from visionforge.api.v1.training import router as training_router
@@ -34,5 +35,6 @@ router.include_router(experiments_router)
 router.include_router(active_learning_router)
 router.include_router(video_router)
 router.include_router(events_router)
+router.include_router(query_router)
 
 __all__ = ["router"]
