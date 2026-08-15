@@ -3,6 +3,7 @@
 from fastapi import APIRouter
 
 from visionforge.api.v1.active_learning import router as active_learning_router
+from visionforge.api.v1.benchmarks import router as benchmarks_router
 from visionforge.api.v1.datasets import router as datasets_router
 from visionforge.api.v1.embeddings import router as embeddings_router
 from visionforge.api.v1.evaluation import router as evaluation_router
@@ -23,6 +24,7 @@ router = APIRouter(prefix="/v1")
 router.include_router(health_router)
 router.include_router(system_router)
 router.include_router(models_router)
+router.include_router(benchmarks_router)
 router.include_router(embeddings_router)
 router.include_router(memory_router)
 router.include_router(search_router)
