@@ -15,601 +15,944 @@ import {
   ShieldAlert,
   Clock,
   ExternalLink,
+  Search,
+  Filter,
+  Eye,
+  GitCompare,
+  Check,
+  X,
+  AlertCircle,
+  BarChart3,
+  Cpu,
+  ArrowRight,
+  RefreshCw,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 
-interface ValidationIssue {
-  sample_id: string;
-  issue_type: string;
-  message: string;
-  severity: "warning" | "error";
+interface HealthCategoryItem {
+  category: string;
+  status: "GOOD" | "NEEDS_REVIEW" | "CRITICAL";
+  headline: string;
+  details: string;
+  issues_count: number;
 }
 
-interface ValidationReport {
-  status: string;
-  total_samples: number;
-  valid_samples: number;
-  corrupted_samples_count: number;
-  missing_embeddings_count: number;
-  issues: ValidationIssue[];
+interface DatasetHealthSummary {
+  overall_integrity: HealthCategoryItem;
+  annotation_quality: HealthCategoryItem;
+  class_balance: HealthCategoryItem;
+  visual_diversity: HealthCategoryItem;
+  potential_leakage: HealthCategoryItem;
+  model_difficulty: HealthCategoryItem;
 }
 
-interface LeakageFinding {
-  group_id: string;
-  leakage_type: string;
-  sample_ids: string[];
-  similarity_score: number;
+interface ClassDistributionItem {
+  class_id: number;
+  class_name: string;
+  sample_count: number;
+  sample_percentage: number;
+  annotation_count: number;
+  avg_annotations_per_image: number;
+  is_rare_class: boolean;
+  is_dominant_class: boolean;
+  split_counts: Record<string, number>;
 }
 
-interface SplitStats {
-  split_name: string;
-  count: number;
-  ratio: number;
+interface ImageStatistics {
+  min_width: number;
+  max_width: number;
+  mean_width: number;
+  min_height: number;
+  max_height: number;
+  mean_height: number;
+  mean_aspect_ratio: number;
   format_distribution: Record<string, number>;
-  category_distribution: Record<string, number>;
+  resolution_bins: Record<string, number>;
+  total_size_bytes: number;
 }
 
-interface PreparationRun {
-  preparation_id: string;
+interface AnnotationStatistics {
+  total_boxes: number;
+  mean_boxes_per_image: number;
+  max_boxes_per_image: number;
+  mean_box_relative_area: number;
+  size_distribution: Record<string, number>;
+}
+
+interface ClassCooccurrence {
+  class_a: string;
+  class_b: string;
+  cooccurrence_count: number;
+  cooccurrence_rate: number;
+}
+
+interface DatasetProfile {
   dataset_id: string;
   dataset_version: string;
-  status: string;
-  created_at: string;
-  completed_at?: string;
-  split_config: {
-    train_ratio: number;
-    val_ratio: number;
-    test_ratio: number;
-    random_seed: number;
-    strategy: string;
-  };
-  validation_report?: ValidationReport;
-  leakage_findings?: LeakageFinding[];
-  split_stats?: Record<string, SplitStats>;
-  manifest_path?: string;
-  error_message?: string;
+  dataset_fingerprint: string;
+  total_samples: number;
+  total_annotations: number;
+  total_classes: number;
+  class_distribution: ClassDistributionItem[];
+  split_distribution: Record<string, number>;
+  split_percentages: Record<string, number>;
+  image_statistics: ImageStatistics;
+  annotation_statistics: AnnotationStatistics;
+  class_cooccurrence: ClassCooccurrence[];
+  health_summary: DatasetHealthSummary;
+  profile_generated_at: string;
 }
 
-export default function DatasetPreparationPage() {
-  const [datasetId, setDatasetId] = useState("safety_dataset_v2");
-  const [datasetVersion, setDatasetVersion] = useState("v2.1");
+interface QualityIssueItem {
+  issue_id: string;
+  sample_id: string;
+  issue_type: string;
+  flag: string;
+  severity: "WARNING" | "CRITICAL";
+  message: string;
+  image_path: string;
+  split: string;
+  class_name?: string;
+  bbox?: number[];
+  review_status: string;
+  detected_at: string;
+}
+
+interface LeakageCandidatePair {
+  pair_id: string;
+  sample_a_id: string;
+  sample_a_split: string;
+  sample_a_path: string;
+  sample_b_id: string;
+  sample_b_split: string;
+  sample_b_path: string;
+  cross_split_type: string;
+  similarity_score: number;
+  match_type: "EXACT_HASH" | "VISUAL_SIMILARITY";
+  recommendation: string;
+}
+
+interface HardSampleItem {
+  sample_id: string;
+  image_path: string;
+  split: string;
+  prioritization_score: number;
+  signals: Record<string, number>;
+  failure_reasons: string[];
+  ground_truth_classes: string[];
+  predicted_classes: string[];
+}
+
+interface DatasetVersionRecord {
+  version_id: string;
+  dataset_id: string;
+  parent_version_id?: string;
+  dataset_fingerprint: string;
+  changes_summary: string;
+  total_samples: number;
+  total_annotations: number;
+  review_decisions_count: number;
+  created_at: string;
+}
+
+interface DatasetDiffResult {
+  dataset_id: string;
+  version_a: string;
+  version_b: string;
+  samples_added: string[];
+  samples_removed: string[];
+  classes_added: string[];
+  classes_removed: string[];
+  annotations_count_delta: number;
+  leakage_pairs_delta: number;
+  class_distribution_deltas: Record<string, number>;
+  summary: string;
+}
+
+export default function DataCentricWorkspacePage() {
+  const [datasetId, setDatasetId] = useState("safety_v2");
+  const [versionId, setVersionId] = useState("v2.0.0");
+  const [activeTab, setActiveTab] = useState<
+    "overview" | "classes" | "issues" | "leakage" | "hard_samples" | "diff" | "pipeline"
+  >("overview");
+
+  const [profile, setProfile] = useState<DatasetProfile | null>(null);
+  const [issues, setIssues] = useState<QualityIssueItem[]>([]);
+  const [leakagePairs, setLeakagePairs] = useState<LeakageCandidatePair[]>([]);
+  const [hardSamples, setHardSamples] = useState<HardSampleItem[]>([]);
+  const [versions, setVersions] = useState<DatasetVersionRecord[]>([]);
+  const [diffResult, setDiffResult] = useState<DatasetDiffResult | null>(null);
+  const [diffVerA, setDiffVerA] = useState("v1.0.0");
+  const [diffVerB, setDiffVerB] = useState("v2.0.0");
+
+  const [selectedIssue, setSelectedIssue] = useState<QualityIssueItem | null>(null);
+  const [inspectSample, setInspectSample] = useState<string | null>(null);
+  const [issueFilter, setIssueFilter] = useState<string>("ALL");
+  const [isLoading, setIsLoading] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Pipeline Splitting State
   const [trainRatio, setTrainRatio] = useState(70);
   const [valRatio, setValRatio] = useState(15);
   const [testRatio, setTestRatio] = useState(15);
   const [seed, setSeed] = useState(42);
   const [strategy, setStrategy] = useState("random");
-
-  const [isRunning, setIsRunning] = useState(false);
-  const [currentRun, setCurrentRun] = useState<PreparationRun | null>(null);
-  const [history, setHistory] = useState<PreparationRun[]>([]);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isSplitting, setIsSplitting] = useState(false);
 
   useEffect(() => {
-    fetchHistory();
-  }, []);
+    loadWorkspaceData();
+  }, [datasetId, versionId]);
 
-  const fetchHistory = async () => {
+  const loadWorkspaceData = async () => {
+    setIsLoading(true);
     try {
-      const res = await fetch("/api/v1/datasets/prepare/history");
-      if (res.ok) {
-        const payload = await res.json();
-        if (payload.data) {
-          setHistory(payload.data);
-          if (payload.data.length > 0 && !currentRun) {
-            setCurrentRun(payload.data[0]);
-          }
-        }
+      // 1. Profile
+      const profRes = await fetch(`/api/v1/datasets/intelligence/profile?dataset_id=${datasetId}&version=${versionId}`);
+      if (profRes.ok) {
+        const p = await profRes.json();
+        setProfile(p.data);
       }
-    } catch {
-      // Backend server may be offline during initial client mounting
+
+      // 2. Issues
+      const issRes = await fetch(`/api/v1/datasets/intelligence/issues?dataset_id=${datasetId}`);
+      if (issRes.ok) {
+        const i = await issRes.json();
+        setIssues(i.data);
+      }
+
+      // 3. Leakage
+      const leakRes = await fetch(`/api/v1/datasets/intelligence/leakage?dataset_id=${datasetId}`);
+      if (leakRes.ok) {
+        const l = await leakRes.json();
+        setLeakagePairs(l.data);
+      }
+
+      // 4. Hard samples
+      const hardRes = await fetch(`/api/v1/datasets/intelligence/hard-samples?dataset_id=${datasetId}`);
+      if (hardRes.ok) {
+        const h = await hardRes.json();
+        setHardSamples(h.data);
+      }
+
+      // 5. Versions
+      const verRes = await fetch(`/api/v1/datasets/intelligence/versions?dataset_id=${datasetId}`);
+      if (verRes.ok) {
+        const v = await verRes.json();
+        setVersions(v.data);
+      }
+    } catch (err) {
+      console.error("Failed to load workspace:", err);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleRatioChange = (type: "train" | "val" | "test", value: number) => {
-    if (type === "train") {
-      setTrainRatio(value);
-      const remaining = 100 - value;
-      setValRatio(Math.round(remaining / 2));
-      setTestRatio(remaining - Math.round(remaining / 2));
-    } else if (type === "val") {
-      setValRatio(value);
-      setTestRatio(Math.max(0, 100 - trainRatio - value));
-    } else {
-      setTestRatio(value);
-      setValRatio(Math.max(0, 100 - trainRatio - value));
-    }
-  };
-
-  const handlePrepareDataset = async () => {
-    setIsRunning(true);
-    setErrorMessage(null);
-
-    const payload = {
-      dataset_id: datasetId,
-      dataset_version: datasetVersion,
-      train_ratio: trainRatio / 100,
-      val_ratio: valRatio / 100,
-      test_ratio: testRatio / 100,
-      random_seed: Number(seed),
-      strategy: strategy,
-    };
-
+  const handleFetchDiff = async () => {
     try {
-      const res = await fetch("/api/v1/datasets/prepare", {
+      const res = await fetch(
+        `/api/v1/datasets/intelligence/diff?dataset_id=${datasetId}&version_a=${diffVerA}&version_b=${diffVerB}`
+      );
+      if (res.ok) {
+        const d = await res.json();
+        setDiffResult(d.data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch diff:", err);
+    }
+  };
+
+  const handleCurationDecision = async (sampleId: string, issueId: string | undefined, decision: string) => {
+    try {
+      const res = await fetch("/api/v1/datasets/intelligence/review", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          review_id: `rev_${Date.now()}`,
+          sample_id: sampleId,
+          issue_id: issueId,
+          decision: decision,
+          category: "annotation_review",
+          notes: `Recorded decision: ${decision}`,
+          reviewer: "Principal Researcher",
+        }),
       });
 
-      const result = await res.json();
-
-      if (res.ok && result.data) {
-        setCurrentRun(result.data);
-        fetchHistory();
-      } else {
-        setErrorMessage(result.detail || result.message || "Failed to execute dataset preparation.");
+      if (res.ok) {
+        setToastMessage(`Review decision '${decision}' recorded for ${sampleId}`);
+        setTimeout(() => setToastMessage(null), 3000);
+        setSelectedIssue(null);
+        setInspectSample(null);
+        // Refresh issues
+        loadWorkspaceData();
       }
-    } catch (err: any) {
-      setErrorMessage(err.message || "Network error communicating with backend.");
-    } finally {
-      setIsRunning(false);
+    } catch (err) {
+      console.error("Failed to record decision:", err);
     }
   };
 
-  const handleExportManifest = (prepId: string, format: "json" | "csv") => {
-    window.open(`/api/v1/datasets/prepare/${prepId}/manifest?format=${format}`, "_blank");
+  const handleDownloadReport = () => {
+    window.open(`/api/v1/datasets/intelligence/report?dataset_id=${datasetId}&version=${versionId}`, "_blank");
   };
 
-  const totalRatio = trainRatio + valRatio + testRatio;
-  const isRatioValid = Math.abs(totalRatio - 100) <= 1;
+  const getStatusBadge = (status: "GOOD" | "NEEDS_REVIEW" | "CRITICAL") => {
+    switch (status) {
+      case "GOOD":
+        return <span className="px-2 py-0.5 text-xs font-semibold rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Good</span>;
+      case "NEEDS_REVIEW":
+        return <span className="px-2 py-0.5 text-xs font-semibold rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">Needs Review</span>;
+      case "CRITICAL":
+        return <span className="px-2 py-0.5 text-xs font-semibold rounded bg-rose-500/10 text-rose-400 border border-rose-500/20">Critical</span>;
+    }
+  };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-12">
-      <PageHeader
-        title="Dataset Preparation Pipeline"
-        description="Convert raw visual memory indices into reproducible, leakage-free, training-ready dataset manifests."
-        breadcrumbs={["VisionForge", "Datasets", "Preparation Pipeline"]}
-        actions={
-          <div className="flex gap-2">
-            <Button variant="secondary" icon={<RotateCcw className="w-4 h-4" />} onClick={fetchHistory}>
-              Refresh Run History
-            </Button>
-          </div>
-        }
-      />
+    <div className="space-y-6 pb-12">
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 bg-emerald-950 border border-emerald-500 text-emerald-200 rounded-lg shadow-xl text-sm animate-fade-in">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+          {toastMessage}
+        </div>
+      )}
 
-      {/* Grid Layout: Config vs Run Details */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Panel: Configuration (5 cols) */}
-        <div className="lg:col-span-5 space-y-6">
-          <Card className="bg-slate-900 border-slate-800 shadow-xl">
-            <CardHeader className="border-b border-slate-800 pb-4">
-              <CardTitle className="text-lg font-semibold text-slate-100 flex items-center gap-2">
-                <Sliders className="w-5 h-5 text-indigo-400" />
-                Preparation Configuration
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-5 pt-4">
-              {/* Dataset Metadata */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-slate-400 mb-1">Dataset ID</label>
-                  <input
-                    type="text"
-                    value={datasetId}
-                    onChange={(e) => setDatasetId(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-400 mb-1">Version</label>
-                  <input
-                    type="text"
-                    value={datasetVersion}
-                    onChange={(e) => setDatasetVersion(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-              </div>
-
-              {/* Split Strategy */}
-              <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1">Split Strategy</label>
-                <select
-                  value={strategy}
-                  onChange={(e) => setStrategy(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500"
-                >
-                  <option value="random">Random Seed Split (Standard)</option>
-                  <option value="stratified">Stratified Label Split (Preserve Class Ratio)</option>
-                  <option value="group_aware">Group-Aware Split (Keep Groups Intact)</option>
-                </select>
-              </div>
-
-              {/* Random Seed */}
-              <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1">Random Seed (Reproducibility)</label>
-                <input
-                  type="number"
-                  value={seed}
-                  onChange={(e) => setSeed(Number(e.target.value))}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 font-mono focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              {/* Ratio Sliders */}
-              <div className="space-y-4 pt-2 border-t border-slate-800/80">
-                <div className="flex justify-between text-xs font-medium">
-                  <span className="text-slate-400">Partition Ratios</span>
-                  <span className={isRatioValid ? "text-emerald-400" : "text-rose-400 font-bold"}>
-                    Total: {totalRatio}% {isRatioValid ? "✓" : "(!= 100%)"}
-                  </span>
-                </div>
-
-                {/* Train */}
-                <div className="space-y-1">
-                  <div className="flex justify-between text-xs text-indigo-300">
-                    <span>Train Partition</span>
-                    <span className="font-mono">{trainRatio}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="10"
-                    max="90"
-                    value={trainRatio}
-                    onChange={(e) => handleRatioChange("train", Number(e.target.value))}
-                    className="w-full h-1.5 bg-slate-950 rounded-lg appearance-none cursor-pointer accent-indigo-500"
-                  />
-                </div>
-
-                {/* Validation */}
-                <div className="space-y-1">
-                  <div className="flex justify-between text-xs text-emerald-300">
-                    <span>Validation Partition</span>
-                    <span className="font-mono">{valRatio}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="5"
-                    max="40"
-                    value={valRatio}
-                    onChange={(e) => handleRatioChange("val", Number(e.target.value))}
-                    className="w-full h-1.5 bg-slate-950 rounded-lg appearance-none cursor-pointer accent-emerald-500"
-                  />
-                </div>
-
-                {/* Test */}
-                <div className="space-y-1">
-                  <div className="flex justify-between text-xs text-amber-300">
-                    <span>Test Partition</span>
-                    <span className="font-mono">{testRatio}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="5"
-                    max="40"
-                    value={testRatio}
-                    onChange={(e) => handleRatioChange("test", Number(e.target.value))}
-                    className="w-full h-1.5 bg-slate-950 rounded-lg appearance-none cursor-pointer accent-amber-500"
-                  />
-                </div>
-              </div>
-
-              {errorMessage && (
-                <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-lg text-xs text-rose-300">
-                  {errorMessage}
-                </div>
-              )}
-
-              {/* Action Button */}
-              <Button
-                variant="primary"
-                className="w-full justify-center py-2.5 bg-indigo-600 hover:bg-indigo-500 font-semibold"
-                icon={isRunning ? <Sparkles className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-                disabled={isRunning || !isRatioValid}
-                onClick={handlePrepareDataset}
-              >
-                {isRunning ? "Executing Pipeline..." : "Validate & Prepare Dataset"}
-              </Button>
-            </CardContent>
-          </Card>
+      {/* Header & Controls */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <PageHeader
+            title="Dataset Intelligence & Curation Workspace"
+            description="Scientifically rigorous data-centric computer vision: quality audits, leakage detection, class balance, and version lineage."
+          />
         </div>
 
-        {/* Right Panel: Run Details & Validation Report (7 cols) */}
-        <div className="lg:col-span-7 space-y-6">
-          {currentRun ? (
-            <>
-              {/* Status Header Banner */}
-              <Card className="bg-slate-900 border-slate-800 shadow-xl overflow-hidden">
-                <div className="p-5 border-b border-slate-800 flex justify-between items-center bg-slate-950/50">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold text-slate-200">
-                        {currentRun.dataset_id} ({currentRun.dataset_version})
-                      </span>
-                      <span className="px-2 py-0.5 rounded text-xs font-mono bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
-                        {currentRun.preparation_id}
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-500 mt-1 flex items-center gap-2">
-                      <Clock className="w-3.5 h-3.5" />
-                      Created at {new Date(currentRun.created_at).toLocaleString()}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span
-                      className={`px-3 py-1 rounded-full text-xs font-bold ${
-                        currentRun.status === "COMPLETED"
-                          ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30"
-                          : currentRun.status === "FAILED"
-                          ? "bg-rose-500/10 text-rose-400 border border-rose-500/30"
-                          : "bg-amber-500/10 text-amber-400 border border-amber-500/30 animate-pulse"
-                      }`}
-                    >
-                      {currentRun.status}
-                    </span>
-                    {currentRun.status === "COMPLETED" && (
-                      <div className="flex gap-2">
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          icon={<Download className="w-3.5 h-3.5" />}
-                          onClick={() => handleExportManifest(currentRun.preparation_id, "json")}
-                        >
-                          JSON
-                        </Button>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          icon={<FileSpreadsheet className="w-3.5 h-3.5" />}
-                          onClick={() => handleExportManifest(currentRun.preparation_id, "csv")}
-                        >
-                          CSV
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                </div>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-1.5 gap-2">
+            <Database className="w-4 h-4 text-blue-400" />
+            <select
+              value={datasetId}
+              onChange={(e) => setDatasetId(e.target.value)}
+              className="bg-transparent text-sm font-medium text-zinc-200 focus:outline-none"
+            >
+              <option value="safety_v2">safety_v2</option>
+              <option value="ppe_detection">ppe_detection</option>
+            </select>
 
-                <CardContent className="p-6 space-y-6">
-                  {/* Split Preview Visual Bar */}
-                  {currentRun.split_stats && (
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-xs font-medium text-slate-300">
-                        <span>Split Partition Preview</span>
-                        <span className="font-mono text-slate-400">
-                          Seed: {currentRun.split_config.random_seed} | Strategy: {currentRun.split_config.strategy}
-                        </span>
-                      </div>
-                      <div className="h-4 w-full bg-slate-950 rounded-lg overflow-hidden flex border border-slate-800">
-                        <div
-                          style={{
-                            width: `${(currentRun.split_stats.train?.ratio || 0.7) * 100}%`,
-                          }}
-                          className="bg-indigo-500 h-full flex items-center justify-center text-[10px] font-bold text-white"
-                          title={`Train: ${currentRun.split_stats.train?.count} samples`}
-                        >
-                          Train (
-                          {Math.round((currentRun.split_stats.train?.ratio || 0.7) * 100)}
-                          %)
-                        </div>
-                        <div
-                          style={{
-                            width: `${(currentRun.split_stats.val?.ratio || 0.15) * 100}%`,
-                          }}
-                          className="bg-emerald-500 h-full flex items-center justify-center text-[10px] font-bold text-slate-950"
-                          title={`Val: ${currentRun.split_stats.val?.count} samples`}
-                        >
-                          Val (
-                          {Math.round((currentRun.split_stats.val?.ratio || 0.15) * 100)}
-                          %)
-                        </div>
-                        <div
-                          style={{
-                            width: `${(currentRun.split_stats.test?.ratio || 0.15) * 100}%`,
-                          }}
-                          className="bg-amber-500 h-full flex items-center justify-center text-[10px] font-bold text-slate-950"
-                          title={`Test: ${currentRun.split_stats.test?.count} samples`}
-                        >
-                          Test (
-                          {Math.round((currentRun.split_stats.test?.ratio || 0.15) * 100)}
-                          %)
-                        </div>
-                      </div>
+            <span className="text-zinc-600">/</span>
 
-                      {/* Numeric Breakdown Cards */}
-                      <div className="grid grid-cols-3 gap-3 pt-2">
-                        <div className="p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-lg">
-                          <p className="text-[11px] font-semibold text-indigo-400">TRAIN</p>
-                          <p className="text-lg font-bold text-slate-100 font-mono">
-                            {currentRun.split_stats.train?.count || 0}
-                          </p>
-                          <p className="text-[10px] text-slate-500">samples</p>
-                        </div>
-                        <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
-                          <p className="text-[11px] font-semibold text-emerald-400">VALIDATION</p>
-                          <p className="text-lg font-bold text-slate-100 font-mono">
-                            {currentRun.split_stats.validation?.count || 0}
-                          </p>
-                          <p className="text-[10px] text-slate-500">samples</p>
-                        </div>
-                        <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
-                          <p className="text-[11px] font-semibold text-amber-400">TEST</p>
-                          <p className="text-lg font-bold text-slate-100 font-mono">
-                            {currentRun.split_stats.test?.count || 0}
-                          </p>
-                          <p className="text-[10px] text-slate-500">samples</p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
+            <select
+              value={versionId}
+              onChange={(e) => setVersionId(e.target.value)}
+              className="bg-transparent text-xs font-semibold text-blue-400 focus:outline-none"
+            >
+              <option value="v2.0.0">v2.0.0 (Curated)</option>
+              <option value="v1.0.0">v1.0.0 (Raw)</option>
+            </select>
+          </div>
 
-                  {/* Pre-split Validation Report */}
-                  {currentRun.validation_report && (
-                    <div className="space-y-3 pt-4 border-t border-slate-800">
-                      <h4 className="text-sm font-semibold text-slate-300 flex items-center gap-2">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                        Pre-Split Validation Report
-                      </h4>
+          <Button variant="outline" size="sm" onClick={handleDownloadReport} className="gap-1.5 border-zinc-700">
+            <Download className="w-3.5 h-3.5" />
+            Export Report
+          </Button>
 
-                      <div className="grid grid-cols-3 gap-3 text-xs">
-                        <div className="p-2.5 bg-slate-950 border border-slate-800 rounded-lg">
-                          <span className="text-slate-400">Total Checked:</span>
-                          <span className="float-right font-mono font-bold text-slate-200">
-                            {currentRun.validation_report.total_samples}
-                          </span>
-                        </div>
-                        <div className="p-2.5 bg-slate-950 border border-slate-800 rounded-lg">
-                          <span className="text-slate-400">Valid Samples:</span>
-                          <span className="float-right font-mono font-bold text-emerald-400">
-                            {currentRun.validation_report.valid_samples}
-                          </span>
-                        </div>
-                        <div className="p-2.5 bg-slate-950 border border-slate-800 rounded-lg">
-                          <span className="text-slate-400">Corrupted:</span>
-                          <span className="float-right font-mono font-bold text-rose-400">
-                            {currentRun.validation_report.corrupted_samples_count}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Data Leakage Findings Panel */}
-                  <div className="space-y-3 pt-4 border-t border-slate-800">
-                    <h4 className="text-sm font-semibold text-slate-300 flex items-center gap-2">
-                      <ShieldAlert className="w-4 h-4 text-amber-400" />
-                      Data Leakage Prevention Analysis
-                    </h4>
-
-                    {currentRun.leakage_findings && currentRun.leakage_findings.length > 0 ? (
-                      <div className="space-y-2">
-                        {currentRun.leakage_findings.map((finding) => (
-                          <div
-                            key={finding.group_id}
-                            className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg flex justify-between items-center text-xs"
-                          >
-                            <div className="space-y-0.5">
-                              <div className="flex items-center gap-2">
-                                <span className="font-bold text-amber-300">{finding.leakage_type}</span>
-                                <span className="font-mono text-slate-400">({finding.group_id})</span>
-                              </div>
-                              <p className="text-[11px] text-slate-400">
-                                {finding.sample_ids.length} samples grouped together into same partition.
-                              </p>
-                            </div>
-                            <span className="font-mono font-bold text-amber-400 bg-amber-500/20 px-2 py-0.5 rounded">
-                              Score: {finding.similarity_score}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-xs text-emerald-400 flex items-center gap-2">
-                        <CheckCircle2 className="w-4 h-4" />
-                        No exact or near-duplicate data leakage detected across splits.
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            </>
-          ) : (
-            <Card className="bg-slate-900 border-slate-800 shadow-xl p-12 text-center">
-              <Database className="w-12 h-12 text-indigo-400 mx-auto mb-4 opacity-50" />
-              <h3 className="text-lg font-bold text-slate-200">No Active Preparation Run</h3>
-              <p className="text-xs text-slate-500 max-w-sm mx-auto mt-2">
-                Configure your split ratios, random seed, and split strategy on the left, then click &quot;Validate &amp;
-                Prepare Dataset&quot;.
-              </p>
-            </Card>
-          )}
+          <Button size="sm" onClick={loadWorkspaceData} disabled={isLoading} className="gap-1.5 bg-blue-600 hover:bg-blue-500">
+            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
         </div>
       </div>
 
-      {/* Bottom Section: Preparation History Log Table */}
-      <Card className="bg-slate-900 border-slate-800 shadow-xl">
-        <CardHeader className="border-b border-slate-800 pb-4 flex flex-row items-center justify-between">
-          <CardTitle className="text-md font-semibold text-slate-200 flex items-center gap-2">
-            <Clock className="w-4 h-4 text-indigo-400" />
-            Preparation Run History &amp; Reproducibility Audit Log
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-0 overflow-x-auto">
-          {history.length > 0 ? (
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-950/80 text-slate-400 border-b border-slate-800 font-mono">
-                <tr>
-                  <th className="p-3 pl-6">Prep ID</th>
-                  <th className="p-3">Dataset / Version</th>
-                  <th className="p-3">Strategy</th>
-                  <th className="p-3">Seed</th>
-                  <th className="p-3">Ratios (T / V / T)</th>
-                  <th className="p-3">Status</th>
-                  <th className="p-3">Timestamp</th>
-                  <th className="p-3 pr-6 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/60 text-slate-300">
-                {history.map((run) => (
-                  <tr key={run.preparation_id} className="hover:bg-slate-800/30 transition-colors">
-                    <td className="p-3 pl-6 font-mono text-indigo-300 font-bold">{run.preparation_id}</td>
-                    <td className="p-3">
-                      {run.dataset_id} ({run.dataset_version})
-                    </td>
-                    <td className="p-3 capitalize">{run.split_config.strategy}</td>
-                    <td className="p-3 font-mono">{run.split_config.random_seed}</td>
-                    <td className="p-3 font-mono text-slate-400">
-                      {Math.round(run.split_config.train_ratio * 100)} /{" "}
-                      {Math.round(run.split_config.val_ratio * 100)} /{" "}
-                      {Math.round(run.split_config.test_ratio * 100)}
-                    </td>
-                    <td className="p-3">
-                      <span
-                        className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                          run.status === "COMPLETED"
-                            ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                            : "bg-rose-500/10 text-rose-400 border border-rose-500/20"
-                        }`}
-                      >
-                        {run.status}
-                      </span>
-                    </td>
-                    <td className="p-3 text-slate-500">{new Date(run.created_at).toLocaleString()}</td>
-                    <td className="p-3 pr-6 text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          className="h-7 text-[11px]"
-                          onClick={() => setCurrentRun(run)}
-                        >
-                          Inspect
-                        </Button>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          className="h-7 text-[11px]"
-                          icon={<Download className="w-3 h-3" />}
-                          onClick={() => handleExportManifest(run.preparation_id, "json")}
-                        >
-                          JSON
-                        </Button>
+      {/* Dataset Health Scorecard (Step 30-31) */}
+      {profile?.health_summary && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
+          {[
+            { key: "integrity", item: profile.health_summary.overall_integrity, icon: Database },
+            { key: "anno", item: profile.health_summary.annotation_quality, icon: ShieldAlert },
+            { key: "balance", item: profile.health_summary.class_balance, icon: BarChart3 },
+            { key: "diversity", item: profile.health_summary.visual_diversity, icon: Sparkles },
+            { key: "leakage", item: profile.health_summary.potential_leakage, icon: AlertTriangle },
+            { key: "difficulty", item: profile.health_summary.model_difficulty, icon: Cpu },
+          ].map(({ key, item, icon: Icon }) => (
+            <Card key={key} className="bg-zinc-900/60 border-zinc-800 p-3 hover:border-zinc-700 transition-colors">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-1.5">
+                  <Icon className="w-3.5 h-3.5 text-zinc-400" />
+                  <span className="text-xs font-semibold text-zinc-300">{item.category}</span>
+                </div>
+                {getStatusBadge(item.status)}
+              </div>
+              <p className="text-xs font-medium text-zinc-200 line-clamp-1">{item.headline}</p>
+              <p className="text-[11px] text-zinc-500 mt-1 line-clamp-2">{item.details}</p>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Navigation Tabs */}
+      <div className="flex items-center gap-1 border-b border-zinc-800 pb-2 overflow-x-auto text-sm">
+        {[
+          { id: "overview", label: "Overview & Profile", count: profile?.total_samples },
+          { id: "classes", label: "Classes & Co-occurrence", count: profile?.total_classes },
+          { id: "issues", label: "Quality Flags & Issues", count: issues.length },
+          { id: "leakage", label: "Cross-Split Leakage", count: leakagePairs.length },
+          { id: "hard_samples", label: "Hard Samples", count: hardSamples.length },
+          { id: "diff", label: "Dataset Diff & Versioning", count: versions.length },
+          { id: "pipeline", label: "Preparation & Split Pipeline" },
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id as any)}
+            className={`px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1.5 whitespace-nowrap ${
+              activeTab === tab.id
+                ? "bg-blue-600/10 text-blue-400 border border-blue-500/20"
+                : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40"
+            }`}
+          >
+            {tab.label}
+            {tab.count !== undefined && (
+              <span className={`px-1.5 py-0.2 text-[11px] rounded-full ${
+                activeTab === tab.id ? "bg-blue-500/20 text-blue-300" : "bg-zinc-800 text-zinc-400"
+              }`}>
+                {tab.count}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* TAB 1: Overview & Profile */}
+      {activeTab === "overview" && profile && (
+        <div className="space-y-6 animate-fade-in">
+          {/* Top Metrics Row */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <Card className="bg-zinc-900/50 border-zinc-800 p-4">
+              <span className="text-xs text-zinc-400">Total Samples</span>
+              <p className="text-2xl font-bold text-zinc-100 mt-1">{profile.total_samples.toLocaleString()}</p>
+              <span className="text-[11px] text-emerald-400 mt-1 block">100% verified readable</span>
+            </Card>
+            <Card className="bg-zinc-900/50 border-zinc-800 p-4">
+              <span className="text-xs text-zinc-400">Total Bounding Boxes</span>
+              <p className="text-2xl font-bold text-zinc-100 mt-1">{profile.total_annotations.toLocaleString()}</p>
+              <span className="text-[11px] text-zinc-400 mt-1 block">
+                ~{profile.annotation_statistics.mean_boxes_per_image} boxes/image
+              </span>
+            </Card>
+            <Card className="bg-zinc-900/50 border-zinc-800 p-4">
+              <span className="text-xs text-zinc-400">Distinct Classes</span>
+              <p className="text-2xl font-bold text-zinc-100 mt-1">{profile.total_classes}</p>
+              <span className="text-[11px] text-zinc-400 mt-1 block">
+                {profile.class_distribution.filter((c) => c.is_rare_class).length} rare class flagged
+              </span>
+            </Card>
+            <Card className="bg-zinc-900/50 border-zinc-800 p-4">
+              <span className="text-xs text-zinc-400">Dataset Footprint</span>
+              <p className="text-2xl font-bold text-zinc-100 mt-1">
+                {(profile.image_statistics.total_size_bytes / (1024 * 1024)).toFixed(1)} MB
+              </p>
+              <span className="text-[11px] text-zinc-400 mt-1 block">
+                Mean res: {profile.image_statistics.mean_width.toFixed(0)}x{profile.image_statistics.mean_height.toFixed(0)}px
+              </span>
+            </Card>
+          </div>
+
+          {/* Split Partition Distribution (Step 2) */}
+          <Card className="bg-zinc-900/50 border-zinc-800">
+            <CardHeader>
+              <CardTitle className="text-sm font-semibold text-zinc-200">Dataset Partitioning & Split Distribution</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="h-4 w-full rounded-full bg-zinc-800 flex overflow-hidden">
+                <div style={{ width: `${profile.split_percentages.train}%` }} className="bg-blue-500 h-full" title="Train" />
+                <div style={{ width: `${profile.split_percentages.val}%` }} className="bg-emerald-500 h-full" title="Validation" />
+                <div style={{ width: `${profile.split_percentages.test}%` }} className="bg-purple-500 h-full" title="Test" />
+              </div>
+
+              <div className="grid grid-cols-3 gap-4 pt-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-blue-500" />
+                  <div>
+                    <p className="text-xs font-medium text-zinc-300">Train Split</p>
+                    <p className="text-sm font-bold text-zinc-100">{profile.split_distribution.train?.toLocaleString()} ({profile.split_percentages.train}%)</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-emerald-500" />
+                  <div>
+                    <p className="text-xs font-medium text-zinc-300">Validation Split</p>
+                    <p className="text-sm font-bold text-zinc-100">{profile.split_distribution.val?.toLocaleString()} ({profile.split_percentages.val}%)</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-purple-500" />
+                  <div>
+                    <p className="text-xs font-medium text-zinc-300">Test Split</p>
+                    <p className="text-sm font-bold text-zinc-100">{profile.split_distribution.test?.toLocaleString()} ({profile.split_percentages.test}%)</p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Telemetry Breakdown: Image & Annotation Geometry */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Card className="bg-zinc-900/50 border-zinc-800">
+              <CardHeader>
+                <CardTitle className="text-sm font-semibold text-zinc-200">Image Resolution & Format Distribution</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="space-y-2">
+                  {Object.entries(profile.image_statistics.resolution_bins).map(([tier, count]) => (
+                    <div key={tier} className="flex items-center justify-between text-xs">
+                      <span className="text-zinc-400">{tier}</span>
+                      <div className="flex items-center gap-3">
+                        <div className="w-32 h-2 bg-zinc-800 rounded-full overflow-hidden">
+                          <div
+                            className="bg-blue-400 h-full rounded-full"
+                            style={{ width: `${(count / profile.total_samples) * 100}%` }}
+                          />
+                        </div>
+                        <span className="font-semibold text-zinc-200 w-12 text-right">{count}</span>
                       </div>
-                    </td>
-                  </tr>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-zinc-900/50 border-zinc-800">
+              <CardHeader>
+                <CardTitle className="text-sm font-semibold text-zinc-200">Object Bounding Box Size Distribution</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="space-y-2">
+                  {Object.entries(profile.annotation_statistics.size_distribution).map(([tier, count]) => (
+                    <div key={tier} className="flex items-center justify-between text-xs">
+                      <span className="text-zinc-400 capitalize">{tier} Objects</span>
+                      <div className="flex items-center gap-3">
+                        <div className="w-32 h-2 bg-zinc-800 rounded-full overflow-hidden">
+                          <div
+                            className="bg-amber-400 h-full rounded-full"
+                            style={{ width: `${(count / profile.total_annotations) * 100}%` }}
+                          />
+                        </div>
+                        <span className="font-semibold text-zinc-200 w-12 text-right">{count}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 2: Class Distribution & Co-occurrence */}
+      {activeTab === "classes" && profile && (
+        <div className="space-y-6 animate-fade-in">
+          <Card className="bg-zinc-900/50 border-zinc-800">
+            <CardHeader>
+              <CardTitle className="text-sm font-semibold text-zinc-200">Category Class Representation & Split Balance</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-zinc-800 text-zinc-400">
+                      <th className="py-2.5 px-3">Class Name</th>
+                      <th className="py-2.5 px-3">Image Samples</th>
+                      <th className="py-2.5 px-3">Sample %</th>
+                      <th className="py-2.5 px-3">Total Boxes</th>
+                      <th className="py-2.5 px-3">Avg / Img</th>
+                      <th className="py-2.5 px-3">Train / Val / Test</th>
+                      <th className="py-2.5 px-3">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-800/60">
+                    {profile.class_distribution.map((c) => (
+                      <tr key={c.class_name} className="hover:bg-zinc-800/30">
+                        <td className="py-2.5 px-3 font-semibold text-zinc-200">{c.class_name}</td>
+                        <td className="py-2.5 px-3 text-zinc-300">{c.sample_count.toLocaleString()}</td>
+                        <td className="py-2.5 px-3">
+                          <div className="flex items-center gap-2">
+                            <div className="w-16 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                              <div className="bg-blue-400 h-full" style={{ width: `${c.sample_percentage}%` }} />
+                            </div>
+                            <span className="text-zinc-300">{c.sample_percentage.toFixed(1)}%</span>
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3 text-zinc-300">{c.annotation_count.toLocaleString()}</td>
+                        <td className="py-2.5 px-3 text-zinc-400">{c.avg_annotations_per_image.toFixed(2)}</td>
+                        <td className="py-2.5 px-3 text-zinc-400">
+                          {c.split_counts.train || 0} / {c.split_counts.val || 0} / {c.split_counts.test || 0}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          {c.is_rare_class ? (
+                            <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                              ⚠️ Rare (&lt;5%)
+                            </span>
+                          ) : c.is_dominant_class ? (
+                            <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                              ⚡ Dominant
+                            </span>
+                          ) : (
+                            <span className="text-zinc-500 text-[11px]">Balanced</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Class Co-occurrence (Step 16) */}
+          <Card className="bg-zinc-900/50 border-zinc-800">
+            <CardHeader>
+              <CardTitle className="text-sm font-semibold text-zinc-200">Pairwise Class Co-occurrence Frequencies</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-xs text-zinc-400 mb-4">
+                Descriptive co-occurrence patterns in multi-object scene imagery (e.g. Workers wearing Helmets and Vests).
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                {profile.class_cooccurrence.map((co) => (
+                  <div key={`${co.class_a}_${co.class_b}`} className="p-3 bg-zinc-900/80 border border-zinc-800 rounded-lg">
+                    <div className="flex items-center justify-between text-xs font-semibold text-zinc-200 mb-1">
+                      <span>{co.class_a} + {co.class_b}</span>
+                      <span className="text-blue-400">{(co.cooccurrence_rate * 100).toFixed(1)}%</span>
+                    </div>
+                    <span className="text-[11px] text-zinc-500">{co.cooccurrence_count.toLocaleString()} joint images</span>
+                  </div>
                 ))}
-              </tbody>
-            </table>
-          ) : (
-            <div className="p-8 text-center text-xs text-slate-500">
-              No historical preparation runs logged yet.
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* TAB 3: Quality Flags & Issue Explorer */}
+      {activeTab === "issues" && (
+        <div className="space-y-6 animate-fade-in">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Filter className="w-4 h-4 text-zinc-400" />
+              <span className="text-xs text-zinc-400">Filter by category:</span>
+              {["ALL", "ANNOTATION_QUALITY", "IMAGE_QUALITY"].map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setIssueFilter(f)}
+                  className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-colors ${
+                    issueFilter === f ? "bg-zinc-700 text-zinc-100" : "bg-zinc-900 text-zinc-400 hover:text-zinc-200"
+                  }`}
+                >
+                  {f}
+                </button>
+              ))}
             </div>
-          )}
-        </CardContent>
-      </Card>
+
+            <span className="text-xs text-zinc-500">{issues.length} diagnostic issues flagged</span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {issues
+              .filter((i) => issueFilter === "ALL" || i.issue_type === issueFilter)
+              .map((iss) => (
+                <Card key={iss.issue_id} className="bg-zinc-900/60 border-zinc-800 p-4 hover:border-zinc-700 transition-colors">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-0.5 text-[10px] font-bold rounded ${
+                          iss.severity === "CRITICAL"
+                            ? "bg-rose-500/10 text-rose-400 border border-rose-500/20"
+                            : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                        }`}>
+                          {iss.flag}
+                        </span>
+                        <span className="text-xs font-semibold text-zinc-300">{iss.sample_id}</span>
+                        <span className="text-[11px] text-zinc-500">({iss.split})</span>
+                      </div>
+                      <p className="text-xs text-zinc-300 mt-1">{iss.message}</p>
+                      {iss.class_name && (
+                        <p className="text-[11px] text-blue-400">Target Class: {iss.class_name}</p>
+                      )}
+                    </div>
+
+                    <div className="flex flex-col gap-1.5">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-xs h-7 px-2.5 border-zinc-700 hover:bg-emerald-950/40 hover:text-emerald-300 hover:border-emerald-500"
+                        onClick={() => handleCurationDecision(iss.sample_id, iss.issue_id, "NEEDS_CORRECTION")}
+                      >
+                        Send to Review
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-xs h-7 px-2.5 text-zinc-500 hover:text-zinc-300"
+                        onClick={() => handleCurationDecision(iss.sample_id, iss.issue_id, "NOT_A_PROBLEM")}
+                      >
+                        Dismiss
+                      </Button>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 4: Cross-Split Leakage (Step 8 & 39) */}
+      {activeTab === "leakage" && (
+        <div className="space-y-6 animate-fade-in">
+          <div className="p-4 bg-rose-500/5 border border-rose-500/20 rounded-lg flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-xs font-semibold text-rose-300">Cross-Partition Data Leakage Detection</p>
+              <p className="text-xs text-zinc-400 mt-1">
+                Visual duplicates across train and test partitions contaminate evaluation benchmarks. Curation allows researchers to quarantine or remove leaking samples.
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            {leakagePairs.map((pair) => (
+              <Card key={pair.pair_id} className="bg-zinc-900/60 border-zinc-800 p-4">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 text-xs font-bold rounded bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                        {pair.cross_split_type.replace("_to_", " ↔ ").toUpperCase()}
+                      </span>
+                      <span className="text-xs font-bold text-zinc-100">
+                        Similarity: {(pair.similarity_score * 100).toFixed(1)}%
+                      </span>
+                      <span className="text-xs text-zinc-500">({pair.match_type})</span>
+                    </div>
+
+                    <div className="flex items-center gap-4 text-xs font-mono text-zinc-300">
+                      <div className="p-2 bg-zinc-950 rounded border border-zinc-800">
+                        <span className="text-blue-400">[{pair.sample_a_split}]</span> {pair.sample_a_id}
+                      </div>
+                      <ArrowRight className="w-4 h-4 text-zinc-600" />
+                      <div className="p-2 bg-zinc-950 rounded border border-zinc-800">
+                        <span className="text-purple-400">[{pair.sample_b_split}]</span> {pair.sample_b_id}
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-zinc-400">{pair.recommendation}</p>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-xs border-zinc-700 hover:border-blue-500 hover:text-blue-300"
+                      onClick={() => handleCurationDecision(pair.sample_b_id, pair.pair_id, "REPLACE_LEAK")}
+                    >
+                      Quarantine Test Sample
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-xs text-zinc-500 hover:text-zinc-300"
+                      onClick={() => handleCurationDecision(pair.sample_b_id, pair.pair_id, "NOT_A_PROBLEM")}
+                    >
+                      Ignore Match
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 5: Hard Samples (Step 12-13) */}
+      {activeTab === "hard_samples" && (
+        <div className="space-y-6 animate-fade-in">
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-zinc-400">
+              Samples ranked by composite difficulty score combining evaluation failure rates, confidence margin, and annotation density.
+            </p>
+            <span className="text-xs font-semibold text-blue-400">{hardSamples.length} Prioritized Samples</span>
+          </div>
+
+          <div className="space-y-3">
+            {hardSamples.map((h) => (
+              <Card key={h.sample_id} className="bg-zinc-900/60 border-zinc-800 p-4 hover:border-zinc-700 transition-colors">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-3">
+                      <span className="font-mono text-xs font-bold text-zinc-100">{h.sample_id}</span>
+                      <span className="text-xs px-2 py-0.5 bg-zinc-800 text-zinc-400 rounded">({h.split})</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs text-zinc-400">Prioritization Score:</span>
+                        <span className="text-xs font-bold text-amber-400">{(h.prioritization_score * 100).toFixed(0)} / 100</span>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5">
+                      {h.failure_reasons.map((r, idx) => (
+                        <span key={idx} className="px-2 py-0.5 text-[11px] rounded bg-zinc-800 text-zinc-300 border border-zinc-700">
+                          {r}
+                        </span>
+                      ))}
+                    </div>
+
+                    <div className="text-[11px] text-zinc-500">
+                      GT Classes: {h.ground_truth_classes.join(", ") || "None"} | Predicted: {h.predicted_classes.join(", ") || "None"}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-xs border-zinc-700 hover:border-blue-500 hover:text-blue-300"
+                      onClick={() => handleCurationDecision(h.sample_id, undefined, "SEND_TO_ACTIVE_LEARNING")}
+                    >
+                      Send to Active Learning
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="text-xs bg-blue-600 hover:bg-blue-500"
+                      onClick={() => setInspectSample(h.sample_id)}
+                    >
+                      Inspect Deep
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 6: Dataset Diff & Versioning (Step 23-24) */}
+      {activeTab === "diff" && (
+        <div className="space-y-6 animate-fade-in">
+          <Card className="bg-zinc-900/50 border-zinc-800">
+            <CardHeader>
+              <CardTitle className="text-sm font-semibold text-zinc-200">Dataset Version Comparison & Diff</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center gap-3">
+                <div>
+                  <label className="text-xs text-zinc-400 block mb-1">Baseline Version (A)</label>
+                  <select
+                    value={diffVerA}
+                    onChange={(e) => setDiffVerA(e.target.value)}
+                    className="bg-zinc-950 border border-zinc-800 rounded px-3 py-1.5 text-xs text-zinc-200"
+                  >
+                    <option value="v1.0.0">v1.0.0 (Raw Ingestion)</option>
+                    <option value="v2.0.0">v2.0.0 (Curated)</option>
+                  </select>
+                </div>
+
+                <div className="pt-4">
+                  <ArrowRight className="w-4 h-4 text-zinc-600" />
+                </div>
+
+                <div>
+                  <label className="text-xs text-zinc-400 block mb-1">Comparison Version (B)</label>
+                  <select
+                    value={diffVerB}
+                    onChange={(e) => setDiffVerB(e.target.value)}
+                    className="bg-zinc-950 border border-zinc-800 rounded px-3 py-1.5 text-xs text-zinc-200"
+                  >
+                    <option value="v2.0.0">v2.0.0 (Curated)</option>
+                    <option value="v1.0.0">v1.0.0 (Raw Ingestion)</option>
+                  </select>
+                </div>
+
+                <div className="pt-4">
+                  <Button size="sm" onClick={handleFetchDiff} className="bg-blue-600 hover:bg-blue-500 text-xs">
+                    Compute Diff
+                  </Button>
+                </div>
+              </div>
+
+              {diffResult && (
+                <div className="mt-4 p-4 bg-zinc-950 border border-zinc-800 rounded-lg space-y-3">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    <span className="text-xs font-semibold text-zinc-200">{diffResult.summary}</span>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3 pt-2">
+                    <div className="p-3 bg-zinc-900 border border-zinc-800 rounded">
+                      <span className="text-xs text-zinc-500">Annotations Delta</span>
+                      <p className="text-lg font-bold text-emerald-400 mt-1">
+                        {diffResult.annotations_count_delta > 0 ? `+${diffResult.annotations_count_delta}` : diffResult.annotations_count_delta}
+                      </p>
+                    </div>
+                    <div className="p-3 bg-zinc-900 border border-zinc-800 rounded">
+                      <span className="text-xs text-zinc-500">Leakage Reduction</span>
+                      <p className="text-lg font-bold text-blue-400 mt-1">{diffResult.leakage_pairs_delta} pairs</p>
+                    </div>
+                    <div className="p-3 bg-zinc-900 border border-zinc-800 rounded">
+                      <span className="text-xs text-zinc-500">New Classes</span>
+                      <p className="text-lg font-bold text-zinc-200 mt-1">{diffResult.classes_added.length || "None"}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* TAB 7: Preparation & Split Pipeline */}
+      {activeTab === "pipeline" && (
+        <div className="space-y-6 animate-fade-in">
+          <Card className="bg-zinc-900/50 border-zinc-800">
+            <CardHeader>
+              <CardTitle className="text-sm font-semibold text-zinc-200">Reproducible Dataset Partitioning</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="text-xs text-zinc-400 block mb-1">Train Ratio (%)</label>
+                  <input
+                    type="number"
+                    value={trainRatio}
+                    onChange={(e) => setTrainRatio(Number(e.target.value))}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-1.5 text-xs text-zinc-200"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-zinc-400 block mb-1">Validation Ratio (%)</label>
+                  <input
+                    type="number"
+                    value={valRatio}
+                    onChange={(e) => setValRatio(Number(e.target.value))}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-1.5 text-xs text-zinc-200"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-zinc-400 block mb-1">Test Ratio (%)</label>
+                  <input
+                    type="number"
+                    value={testRatio}
+                    onChange={(e) => setTestRatio(Number(e.target.value))}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-1.5 text-xs text-zinc-200"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-2">
+                <span className="text-xs text-zinc-500">Seed: {seed} | Strategy: {strategy}</span>
+                <Button size="sm" className="bg-emerald-600 hover:bg-emerald-500 text-xs gap-1.5">
+                  <Play className="w-3.5 h-3.5" />
+                  Run Partition & Splitting
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }
