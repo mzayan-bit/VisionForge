@@ -1,571 +1,884 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Link from "next/link";
 import {
-  Search,
-  Database,
-  Upload,
-  Sparkles,
-  Layers,
-  HardDrive,
-  Clock,
-  Tag,
-  CheckCircle2,
+  Activity,
   AlertCircle,
-  Sliders,
+  ArrowRight,
+  BarChart3,
+  CheckCircle2,
+  Clock,
+  Compass,
+  Copy,
+  Cpu,
+  Database,
+  Download,
+  Eye,
   FileImage,
+  Filter,
+  HardDrive,
+  History,
   Info,
+  Layers,
+  MapPin,
+  Move,
+  Play,
+  RefreshCw,
+  Search,
+  Sliders,
+  Sparkles,
+  Tag,
+  Upload,
+  Video,
   X,
   Zap,
-  Cpu,
-  BarChart3,
-  List,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 
-interface VisualMemoryRecord {
-  id: string;
-  embedding: number[];
-  dimension: number;
-  image_metadata: Record<string, any>;
-  tags: string[];
+// ─── Interfaces ───────────────────────────────────────────────────
+
+interface VisualAsset {
+  asset_id: string;
+  asset_type: "IMAGE" | "FRAME" | "OBJECT_CROP" | "DATASET_SAMPLE" | "EVENT_FRAME";
+  title: string;
+  embedding_id: string;
+  embedding_model: string;
+  embedding_version: string;
+  source_video_id?: string;
+  source_dataset_id?: string;
+  source_run_id?: string;
+  source_event_id?: string;
+  timestamp_sec?: number;
+  frame_idx?: number;
+  track_id?: number;
+  bbox?: number[];
+  class_name?: string;
+  thumbnail_url?: string;
+  metadata: Record<string, any>;
   indexed_at: string;
 }
 
-interface SearchResultItem {
+interface UnifiedSearchResultItem {
   rank: number;
-  id: string;
+  asset: VisualAsset;
   similarity_score: number;
   distance: number;
-  image_metadata: Record<string, any>;
-  tags: string[];
-  indexed_at: string;
-  embedding_model: string;
+  source_traceability: Record<string, any>;
+  action_link: string;
+  evidence_notes: string;
 }
 
-interface SearchResponse {
+interface UnifiedSearchResponse {
   search_id: string;
   timestamp: string;
-  results: SearchResultItem[];
+  query_summary: string;
+  query_asset?: VisualAsset;
+  results: UnifiedSearchResultItem[];
   candidate_count: number;
   returned_count: number;
   metric_used: string;
   model_used: string;
   embedding_time_ms: number;
   search_time_ms: number;
+  filtering_time_ms: number;
   total_execution_time_ms: number;
-  query_info: Record<string, any>;
+  explanation: string;
 }
 
-export default function VisualSearchPage() {
-  // Query Input Mode: "upload" | "record"
-  const [queryMode, setQueryMode] = useState<"upload" | "record">("upload");
+interface NearDuplicatePair {
+  asset_a: VisualAsset;
+  asset_b: VisualAsset;
+  similarity_score: number;
+  distance: number;
+  recommendation: string;
+}
 
-  // Upload Query State
+interface NearDuplicateResponse {
+  total_evaluated: number;
+  duplicate_pairs_found: number;
+  pairs: NearDuplicatePair[];
+  threshold_used: number;
+  execution_time_ms: number;
+}
+
+interface SearchHistoryRecord {
+  search_id: string;
+  timestamp: string;
+  query_type: string;
+  query_info: Record<string, any>;
+  model_used: string;
+  top_k: number;
+  threshold: number;
+  metric_used: string;
+  candidate_count: number;
+  returned_count: number;
+  total_time_ms: number;
+}
+
+export default function UnifiedVisualSearchPage() {
+  // Search Mode: "image" | "frame" | "object" | "event" | "duplicates"
+  const [searchMode, setSearchMode] = useState<"image" | "frame" | "object" | "event" | "duplicates">("image");
+
+  // Query Inputs State
   const [queryFile, setQueryFile] = useState<File | null>(null);
   const [queryPreview, setQueryPreview] = useState<string | null>(null);
+  const [queryVideoId, setQueryVideoId] = useState<string>("sample_traffic_01");
+  const [queryTimestampSec, setQueryTimestampSec] = useState<number>(4.0);
+  const [queryTrackId, setQueryTrackId] = useState<number>(1);
+  const [queryEventId, setQueryEventId] = useState<string>("evt_dwell_01");
 
-  // Selected Memory Record State
-  const [memoryRecords, setMemoryRecords] = useState<VisualMemoryRecord[]>([]);
-  const [selectedRecordId, setSelectedRecordId] = useState<string>("");
+  // Search Filters & Hyperparameters
+  const [filterAssetType, setFilterAssetType] = useState<string>("ALL");
+  const [filterClass, setFilterClass] = useState<string>("ALL");
+  const [topK, setTopK] = useState<number>(10);
+  const [metric, setMetric] = useState<string>("cosine");
+  const [threshold, setThreshold] = useState<number>(0.0);
+  const [duplicateThreshold, setDuplicateThreshold] = useState<number>(0.95);
 
-  // Search Settings State
-  const [topK, setTopK] = useState(5);
-  const [metric, setMetric] = useState("cosine");
-  const [threshold, setThreshold] = useState(0.0);
-  const [searching, setSearching] = useState(false);
-
-  // Results & History State
-  const [searchResults, setSearchResults] = useState<SearchResponse | null>(null);
+  // Results & Inspector State
+  const [searchResults, setSearchResults] = useState<UnifiedSearchResponse | null>(null);
+  const [duplicateResults, setDuplicateResults] = useState<NearDuplicateResponse | null>(null);
+  const [inspectItem, setInspectItem] = useState<UnifiedSearchResultItem | null>(null);
+  const [searchHistory, setSearchHistory] = useState<SearchHistoryRecord[]>([]);
+  const [showHistoryDrawer, setShowHistoryDrawer] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [inspectItem, setInspectItem] = useState<SearchResultItem | null>(null);
 
-  // Fetch Visual Memory records for record selection dropdown
   useEffect(() => {
-    fetchMemoryRecords();
+    fetchSearchHistory();
+    // Pre-populate index by running default search
+    handleRunSearch();
   }, []);
 
-  const fetchMemoryRecords = async () => {
-    try {
-      const res = await fetch("/api/v1/memory/records?limit=100");
-      const json = await res.json();
-      if (json.success && Array.isArray(json.data)) {
-        setMemoryRecords(json.data);
-        if (json.data.length > 0 && !selectedRecordId) {
-          setSelectedRecordId(json.data[0].id);
-        }
-      }
-    } catch (err) {
-      console.error("Failed to fetch visual memory records:", err);
-    }
-  };
-
-  const handleQueryFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
       setQueryFile(file);
-      setError(null);
       const reader = new FileReader();
-      reader.onloadend = () => setQueryPreview(reader.result as string);
+      reader.onloadend = () => {
+        setQueryPreview(reader.result as string);
+      };
       reader.readAsDataURL(file);
     }
   };
 
-  const handleSearchExecute = async () => {
-    setSearching(true);
+  const handleRunSearch = async () => {
+    setLoading(true);
     setError(null);
-
     try {
-      let res: Response;
-      if (queryMode === "upload") {
-        if (!queryFile) {
-          setError("Please select or drop a query image file.");
-          setSearching(false);
-          return;
+      if (searchMode === "duplicates") {
+        const res = await fetch(`/api/v1/search/duplicates?threshold=${duplicateThreshold}`);
+        const json = await res.json();
+        if (json.success) {
+          setDuplicateResults(json.data);
+        } else {
+          setError(json.message || "Failed to find near duplicates");
         }
-
+      } else if (searchMode === "image" && queryFile) {
         const formData = new FormData();
         formData.append("file", queryFile);
         formData.append("top_k", topK.toString());
         formData.append("metric", metric);
         formData.append("threshold", threshold.toString());
 
-        res = await fetch("/api/v1/search/image", {
+        const res = await fetch("/api/v1/search/image", {
           method: "POST",
           body: formData,
         });
-      } else {
-        if (!selectedRecordId) {
-          setError("Please select an existing record from Visual Memory.");
-          setSearching(false);
-          return;
+        const json = await res.json();
+        if (json.success) {
+          // Map to UnifiedSearchResponse structure
+          const oldPayload = json.data;
+          const mapped: UnifiedSearchResponse = {
+            search_id: oldPayload.search_id,
+            timestamp: oldPayload.timestamp,
+            query_summary: `Uploaded Image (${queryFile.name})`,
+            results: oldPayload.results.map((r: any) => ({
+              rank: r.rank,
+              asset: {
+                asset_id: `asset_${r.id}`,
+                asset_type: "IMAGE",
+                title: r.image_metadata?.title || `Visual Memory Item ${r.id.slice(0, 8)}`,
+                embedding_id: r.id,
+                embedding_model: r.embedding_model,
+                embedding_version: "1.0.0",
+                metadata: r.image_metadata,
+                indexed_at: r.indexed_at,
+              },
+              similarity_score: r.similarity_score,
+              distance: r.distance,
+              source_traceability: { record_id: r.id, tags: r.tags },
+              action_link: "/search",
+              evidence_notes: `Matched visual memory item ${r.id.slice(0, 8)} (similarity: ${(r.similarity_score * 100).toFixed(1)}%)`,
+            })),
+            candidate_count: oldPayload.candidate_count,
+            returned_count: oldPayload.returned_count,
+            metric_used: oldPayload.metric_used,
+            model_used: oldPayload.model_used,
+            embedding_time_ms: oldPayload.embedding_time_ms,
+            search_time_ms: oldPayload.search_time_ms,
+            filtering_time_ms: 0.0,
+            total_execution_time_ms: oldPayload.total_execution_time_ms,
+            explanation: `Ranked ${oldPayload.returned_count} matches by dense embedding similarity (SigLIP-base-patch16-224). Metric: ${metric.toUpperCase()}.`,
+          };
+          setSearchResults(mapped);
+          if (mapped.results.length > 0) setInspectItem(mapped.results[0]);
         }
+      } else {
+        // Unified Search API
+        const payload: Record<string, any> = {
+          query_type:
+            searchMode === "frame"
+              ? "FRAME"
+              : searchMode === "object"
+              ? "OBJECT_CROP"
+              : searchMode === "event"
+              ? "EVENT_FRAME"
+              : "IMAGE",
+          video_id: queryVideoId,
+          timestamp_sec: queryTimestampSec,
+          run_id: "vrun_query_test_01",
+          track_id: queryTrackId,
+          event_id: queryEventId,
+          top_k: topK,
+          threshold: threshold,
+          metric: metric,
+          filter_asset_types: filterAssetType === "ALL" ? null : [filterAssetType],
+          filter_class_name: filterClass === "ALL" ? null : filterClass,
+        };
 
-        res = await fetch("/api/v1/search/record", {
+        const res = await fetch("/api/v1/search/unified", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            record_id: selectedRecordId,
-            top_k: topK,
-            metric: metric,
-            threshold: threshold,
-          }),
+          body: JSON.stringify(payload),
         });
+        const json = await res.json();
+        if (json.success) {
+          setSearchResults(json.data);
+          if (json.data.results.length > 0) {
+            setInspectItem(json.data.results[0]);
+          }
+        } else {
+          setError(json.message || "Unified visual search failed");
+        }
       }
-
-      const json = await res.json();
-      if (json.success && json.data) {
-        setSearchResults(json.data);
-      } else {
-        setError(json.detail || json.error?.message || "Visual search failed.");
-      }
+      await fetchSearchHistory();
     } catch (err: any) {
-      setError(`Network error executing visual search: ${err.message}`);
+      setError(err.message || "Visual search execution error");
     } finally {
-      setSearching(false);
+      setLoading(false);
+    }
+  };
+
+  const fetchSearchHistory = async () => {
+    try {
+      const res = await fetch("/api/v1/search/history?limit=30");
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        setSearchHistory(json.data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch search history:", err);
     }
   };
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col min-h-screen bg-[#0a0a0a] text-neutral-200 font-inter">
+      {/* Page Header */}
       <PageHeader
-        title="Visual Search Workbench"
-        description="Research-grade visual similarity search across indexed Visual Memory using dense 768D vector matching."
+        title="Unified Visual Search"
+        description="Search across Images, Video Frames, Track Object Crops, Moments, and Dataset Samples using Dense Embedding Similarity (SigLIP)"
         breadcrumbs={["VisionForge", "Visual Search"]}
+        actions={
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              icon={<History className="w-4 h-4 text-purple-400" />}
+              onClick={() => setShowHistoryDrawer(true)}
+            >
+              Search History ({searchHistory.length})
+            </Button>
+
+            <Link href="/explorer">
+              <Button variant="secondary" icon={<Compass className="w-4 h-4 text-blue-400" />}>
+                Embedding Explorer
+              </Button>
+            </Link>
+          </div>
+        }
       />
 
-      {error && (
-        <div className="p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-400 text-sm flex items-center gap-3">
-          <AlertCircle className="w-5 h-5 shrink-0" />
-          <span>{error}</span>
-        </div>
-      )}
-
-      {/* Query Input & Search Parameters Panel */}
-      <Card className="p-6 space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/10 pb-4">
-          <div className="flex items-center space-x-2">
-            <Button
-              variant={queryMode === "upload" ? "primary" : "secondary"}
-              size="sm"
-              icon={<Upload className="w-3.5 h-3.5" />}
-              onClick={() => setQueryMode("upload")}
+      <div className="p-6 space-y-6 flex-1">
+        {/* Search Mode Navigation Tabs */}
+        <div className="flex flex-wrap items-center gap-2 border-b border-white/10 pb-4">
+          {[
+            { id: "image", label: "Image Upload", icon: <FileImage className="w-4 h-4" /> },
+            { id: "frame", label: "Video Frame", icon: <Video className="w-4 h-4" /> },
+            { id: "object", label: "Object Crop", icon: <Layers className="w-4 h-4" /> },
+            { id: "event", label: "Event Moment", icon: <Activity className="w-4 h-4" /> },
+            { id: "duplicates", label: "Near-Duplicate Candidates", icon: <Copy className="w-4 h-4 text-amber-400" /> },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setSearchMode(tab.id as any)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl font-mono text-xs font-semibold transition-all ${
+                searchMode === tab.id
+                  ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30"
+                  : "bg-[#141414] hover:bg-[#1c1c1c] text-neutral-400 border border-white/5"
+              }`}
             >
-              Upload Query Image
-            </Button>
-            <Button
-              variant={queryMode === "record" ? "primary" : "secondary"}
-              size="sm"
-              icon={<Database className="w-3.5 h-3.5" />}
-              onClick={() => {
-                setQueryMode("record");
-                fetchMemoryRecords();
-              }}
-            >
-              Select from Visual Memory ({memoryRecords.length})
-            </Button>
-          </div>
-
-          <div className="flex items-center space-x-2 text-xs font-mono">
-            <span className="text-neutral-400">Model:</span>
-            <Badge variant="info">siglip-base-patch16-224 (768D)</Badge>
-          </div>
+              {tab.icon}
+              {tab.label}
+            </button>
+          ))}
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Query Input Target (6 cols) */}
-          <div className="lg:col-span-6 space-y-3">
-            <label className="text-xs font-semibold text-neutral-300 uppercase tracking-wider flex items-center gap-2">
-              <FileImage className="w-3.5 h-3.5 text-blue-400" />
-              Query Source Modality
-            </label>
+        {/* Query Input & Filters Section */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Left Column: Query Target Input */}
+          <div className="lg:col-span-2 bg-[#121212] border border-white/10 rounded-xl p-5 space-y-4 shadow-xl">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-blue-400 flex items-center gap-2 border-b border-white/10 pb-3">
+              <Search className="w-4 h-4 text-blue-400" />
+              Query Input Specification ({searchMode.toUpperCase()})
+            </h3>
 
-            {queryMode === "upload" ? (
-              <div
-                className="border-2 border-dashed border-white/10 hover:border-blue-500/40 rounded-xl p-5 text-center cursor-pointer bg-neutral-950/50 transition-all min-h-[140px] flex flex-col items-center justify-center"
-                onClick={() => document.getElementById("search-query-file")?.click()}
-              >
-                <input
-                  id="search-query-file"
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  className="hidden"
-                  onChange={handleQueryFileChange}
-                />
-                {queryPreview ? (
-                  <div className="flex flex-col items-center space-y-2">
-                    <img src={queryPreview} alt="Query Preview" className="max-h-28 rounded-lg object-contain border border-white/10 shadow" />
-                    <span className="text-[11px] text-blue-400">Click to change query image</span>
-                  </div>
-                ) : (
-                  <div className="space-y-1.5">
-                    <div className="w-9 h-9 rounded-full bg-blue-500/10 text-blue-400 mx-auto flex items-center justify-center">
-                      <Upload className="w-4 h-4" />
+            {/* Mode 1: Image Upload */}
+            {searchMode === "image" && (
+              <div className="space-y-4">
+                <div className="border-2 border-dashed border-white/15 rounded-xl p-6 text-center hover:border-blue-500/50 transition-all bg-[#161616]">
+                  {queryPreview ? (
+                    <div className="space-y-3">
+                      <img
+                        src={queryPreview}
+                        alt="Query Preview"
+                        className="max-h-48 mx-auto rounded-lg shadow object-contain border border-white/10"
+                      />
+                      <button
+                        onClick={() => {
+                          setQueryFile(null);
+                          setQueryPreview(null);
+                        }}
+                        className="text-xs text-red-400 hover:underline font-mono"
+                      >
+                        Remove Image
+                      </button>
                     </div>
-                    <div className="text-xs font-medium text-neutral-200">Drop query image here or click to browse</div>
-                    <div className="text-[11px] text-neutral-500">Supports JPEG, PNG, WebP up to 20MB</div>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-2 bg-neutral-950 p-4 rounded-xl border border-white/10 min-h-[140px] flex flex-col justify-center">
-                <label className="text-xs text-neutral-400">Select Indexed Memory Record</label>
-                {memoryRecords.length === 0 ? (
-                  <div className="text-xs text-amber-400 flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4" />
-                    No indexed items in Visual Memory yet. Please index an image first.
-                  </div>
-                ) : (
-                  <select
-                    value={selectedRecordId}
-                    onChange={(e) => setSelectedRecordId(e.target.value)}
-                    className="w-full bg-neutral-900 border border-white/10 rounded-lg px-3 py-2 text-xs text-neutral-200 focus:outline-none focus:border-blue-500"
-                  >
-                    {memoryRecords.map((rec) => (
-                      <option key={rec.id} value={rec.id}>
-                        {rec.id} — ({rec.image_metadata?.width || 224}x{rec.image_metadata?.height || 224}) [{rec.tags?.join(", ") || "no tags"}]
-                      </option>
-                    ))}
-                  </select>
-                )}
+                  ) : (
+                    <label className="cursor-pointer space-y-2 block">
+                      <Upload className="w-8 h-8 text-neutral-500 mx-auto" />
+                      <div className="text-xs font-mono text-neutral-300">
+                        Drop query image here, or <span className="text-blue-400">browse file</span>
+                      </div>
+                      <div className="text-[10px] text-neutral-500 font-mono">
+                        PNG, JPG, WebP up to 20MB
+                      </div>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleFileChange}
+                        className="hidden"
+                      />
+                    </label>
+                  )}
+                </div>
               </div>
             )}
+
+            {/* Mode 2: Video Frame */}
+            {searchMode === "frame" && (
+              <div className="space-y-4 font-mono text-xs">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-neutral-400 block mb-1.5">Video Asset</label>
+                    <select
+                      value={queryVideoId}
+                      onChange={(e) => setQueryVideoId(e.target.value)}
+                      className="w-full bg-[#181818] border border-white/10 rounded-lg p-2.5 text-white"
+                    >
+                      <option value="sample_traffic_01">sample_traffic_01.mp4 (Traffic intersection)</option>
+                      <option value="factory_safety_02">factory_safety_02.mp4 (Industrial plant)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-neutral-400 block mb-1.5">
+                      Timestamp: {queryTimestampSec.toFixed(1)}s (Frame #{Math.round(queryTimestampSec * 30)})
+                    </label>
+                    <input
+                      type="range"
+                      min={0}
+                      max={15}
+                      step={0.5}
+                      value={queryTimestampSec}
+                      onChange={(e) => setQueryTimestampSec(parseFloat(e.target.value))}
+                      className="w-full h-2 bg-[#1f1f1f] rounded-lg appearance-none cursor-pointer accent-blue-500 mt-2"
+                    />
+                  </div>
+                </div>
+
+                <div className="p-3 bg-[#181818] rounded-lg border border-white/5 text-[11px] text-neutral-400">
+                  Target Query: Video frame sampled at <span className="text-blue-400 font-bold">t = {queryTimestampSec.toFixed(1)}s</span> from <span className="text-white font-bold">{queryVideoId}</span>.
+                </div>
+              </div>
+            )}
+
+            {/* Mode 3: Object Crop */}
+            {searchMode === "object" && (
+              <div className="space-y-4 font-mono text-xs">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-neutral-400 block mb-1.5">Source Video Run</label>
+                    <input
+                      type="text"
+                      disabled
+                      value="vrun_query_test_01 (sample_traffic_01.mp4)"
+                      className="w-full bg-[#181818] border border-white/10 rounded-lg p-2.5 text-neutral-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-neutral-400 block mb-1.5">Target Track ID</label>
+                    <select
+                      value={queryTrackId}
+                      onChange={(e) => setQueryTrackId(parseInt(e.target.value))}
+                      className="w-full bg-[#181818] border border-white/10 rounded-lg p-2.5 text-white"
+                    >
+                      <option value={1}>Track #1 (person — 10.0s duration)</option>
+                      <option value={2}>Track #2 (car — 8.5s duration)</option>
+                      <option value={4}>Track #4 (person — 11.0s duration)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-[#181818] rounded-lg border border-white/5 text-[11px] text-neutral-400">
+                  Target Query: Visual appearance crop of <span className="text-purple-400 font-bold">Track #{queryTrackId}</span> extracted from representative detection bounding box.
+                </div>
+              </div>
+            )}
+
+            {/* Mode 4: Event Moment */}
+            {searchMode === "event" && (
+              <div className="space-y-4 font-mono text-xs">
+                <div>
+                  <label className="text-neutral-400 block mb-1.5">Target Temporal Event</label>
+                  <select
+                    value={queryEventId}
+                    onChange={(e) => setQueryEventId(e.target.value)}
+                    className="w-full bg-[#181818] border border-white/10 rounded-lg p-2.5 text-white"
+                  >
+                    <option value="evt_dwell_01">OBJECT_DWELLED (Track #4 in Loading Zone A, 4.0s)</option>
+                    <option value="evt_entered_02">OBJECT_ENTERED_REGION (Track #1 into Zone A)</option>
+                    <option value="evt_close_03">OBJECTS_BECAME_CLOSE (Track #1 & Track #2, 45.2px)</option>
+                  </select>
+                </div>
+
+                <div className="p-3 bg-[#181818] rounded-lg border border-white/5 text-[11px] text-neutral-400">
+                  Target Query: Keyframe evidence snapshot extracted from <span className="text-emerald-400 font-bold">{queryEventId}</span>.
+                </div>
+              </div>
+            )}
+
+            {/* Mode 5: Near-Duplicates */}
+            {searchMode === "duplicates" && (
+              <div className="space-y-4 font-mono text-xs">
+                <div>
+                  <label className="text-neutral-400 block mb-1.5">
+                    Duplicate Similarity Cutoff: {(duplicateThreshold * 100).toFixed(0)}%
+                  </label>
+                  <input
+                    type="range"
+                    min={0.85}
+                    max={0.99}
+                    step={0.01}
+                    value={duplicateThreshold}
+                    onChange={(e) => setDuplicateThreshold(parseFloat(e.target.value))}
+                    className="w-full h-2 bg-[#1f1f1f] rounded-lg appearance-none cursor-pointer accent-amber-500"
+                  />
+                </div>
+
+                <div className="p-3 bg-[#181818] rounded-lg border border-white/5 text-[11px] text-neutral-400">
+                  Discovers candidate duplicate pairs with pairwise cosine similarity $\ge$ {(duplicateThreshold * 100).toFixed(0)}%.
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end pt-2">
+              <Button
+                variant="primary"
+                icon={<Zap className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />}
+                onClick={handleRunSearch}
+                disabled={loading || (searchMode === "image" && !queryFile)}
+              >
+                {loading ? "Searching..." : searchMode === "duplicates" ? "Discover Duplicates" : "Find Visually Similar"}
+              </Button>
+            </div>
           </div>
 
-          {/* Search Controls (6 cols) */}
-          <div className="lg:col-span-6 space-y-4">
-            <label className="text-xs font-semibold text-neutral-300 uppercase tracking-wider flex items-center gap-2">
-              <Sliders className="w-3.5 h-3.5 text-purple-400" />
-              Similarity Search Parameters
-            </label>
+          {/* Right Column: Search Filters & Hyperparameters */}
+          <div className="bg-[#121212] border border-white/10 rounded-xl p-5 space-y-4 font-mono text-xs shadow-xl">
+            <h3 className="font-semibold uppercase tracking-wider text-neutral-400 flex items-center gap-2 border-b border-white/10 pb-3">
+              <Sliders className="w-4 h-4 text-amber-400" />
+              Search Filters & Thresholds
+            </h3>
 
-            <div className="grid grid-cols-2 gap-4 text-xs">
-              <div className="space-y-1.5 bg-neutral-950 p-3 rounded-lg border border-white/5">
-                <div className="flex justify-between text-neutral-400">
-                  <span>Top-K Retrieval</span>
-                  <span className="font-mono text-purple-400 font-bold">{topK}</span>
-                </div>
-                <input
-                  type="range"
-                  min={1}
-                  max={50}
-                  value={topK}
-                  onChange={(e) => setTopK(parseInt(e.target.value))}
-                  className="w-full accent-purple-500"
-                />
-              </div>
-
-              <div className="space-y-1.5 bg-neutral-950 p-3 rounded-lg border border-white/5">
-                <div className="flex justify-between text-neutral-400">
-                  <span>Minimum Threshold</span>
-                  <span className="font-mono text-emerald-400 font-bold">{(threshold * 100).toFixed(0)}%</span>
-                </div>
-                <input
-                  type="range"
-                  min={0.0}
-                  max={0.95}
-                  step={0.05}
-                  value={threshold}
-                  onChange={(e) => setThreshold(parseFloat(e.target.value))}
-                  className="w-full accent-emerald-500"
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between bg-neutral-950 p-3 rounded-lg border border-white/5 text-xs">
-              <span className="text-neutral-400 font-medium">Distance Metric</span>
+            <div>
+              <label className="text-neutral-400 block mb-1">Filter Asset Type</label>
               <select
-                value={metric}
-                onChange={(e) => setMetric(e.target.value)}
-                className="bg-neutral-900 border border-white/10 rounded px-3 py-1 text-xs text-neutral-200 focus:outline-none"
+                value={filterAssetType}
+                onChange={(e) => setFilterAssetType(e.target.value)}
+                className="w-full bg-[#181818] border border-white/10 rounded-lg p-2 text-white"
               >
-                <option value="cosine">Cosine Similarity (Normalized)</option>
-                <option value="dot_product">Dot Product Inner Space</option>
-                <option value="euclidean">Euclidean Distance (L2)</option>
+                <option value="ALL">All Asset Types</option>
+                <option value="IMAGE">Image Samples</option>
+                <option value="FRAME">Video Frames</option>
+                <option value="OBJECT_CROP">Object Crops</option>
+                <option value="EVENT_FRAME">Event Evidence Frames</option>
+                <option value="DATASET_SAMPLE">Dataset Samples</option>
               </select>
             </div>
 
-            <Button
-              variant="primary"
-              size="lg"
-              className="w-full justify-center"
-              icon={<Sparkles className={`w-4 h-4 ${searching ? "animate-spin" : ""}`} />}
-              onClick={handleSearchExecute}
-              disabled={searching || (queryMode === "upload" && !queryFile) || (queryMode === "record" && !selectedRecordId)}
-            >
-              {searching ? "Extracting Features & Searching..." : "Execute Visual Search"}
-            </Button>
+            <div>
+              <label className="text-neutral-400 block mb-1">Class Filter</label>
+              <select
+                value={filterClass}
+                onChange={(e) => setFilterClass(e.target.value)}
+                className="w-full bg-[#181818] border border-white/10 rounded-lg p-2 text-white"
+              >
+                <option value="ALL">All Classes</option>
+                <option value="person">person</option>
+                <option value="car">car</option>
+                <option value="helmet">helmet</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="text-neutral-400 block mb-1">
+                Min Similarity Cutoff: {(threshold * 100).toFixed(0)}%
+              </label>
+              <input
+                type="range"
+                min={0.0}
+                max={0.9}
+                step={0.05}
+                value={threshold}
+                onChange={(e) => setThreshold(parseFloat(e.target.value))}
+                className="w-full h-1.5 bg-[#1f1f1f] rounded-lg appearance-none cursor-pointer accent-blue-500"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-neutral-400 block mb-1">Top-K</label>
+                <select
+                  value={topK}
+                  onChange={(e) => setTopK(parseInt(e.target.value))}
+                  className="w-full bg-[#181818] border border-white/10 rounded-lg p-2 text-white"
+                >
+                  <option value={5}>Top 5</option>
+                  <option value={10}>Top 10</option>
+                  <option value={25}>Top 25</option>
+                  <option value={50}>Top 50</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-neutral-400 block mb-1">Metric</label>
+                <select
+                  value={metric}
+                  onChange={(e) => setMetric(e.target.value)}
+                  className="w-full bg-[#181818] border border-white/10 rounded-lg p-2 text-white"
+                >
+                  <option value="cosine">Cosine</option>
+                  <option value="euclidean">Euclidean</option>
+                </select>
+              </div>
+            </div>
           </div>
         </div>
-      </Card>
 
-      {/* Research Information Telemetry Bar */}
-      {searchResults && (
-        <Card className="p-4 bg-neutral-900/50 space-y-3 border-blue-500/20">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs border-b border-white/5 pb-2">
-            <div className="flex items-center space-x-3">
-              <span className="text-neutral-400 font-mono">Transaction ID:</span>
-              <span className="font-mono text-blue-400 font-semibold">{searchResults.search_id}</span>
-            </div>
-
-            <div className="flex items-center space-x-3 text-neutral-400 font-mono">
-              <span>Timestamp: {new Date(searchResults.timestamp).toLocaleTimeString()}</span>
-              <span>•</span>
-              <span>Metric: <strong className="text-neutral-200 uppercase">{searchResults.metric_used}</strong></span>
-            </div>
+        {/* Error Alert */}
+        {error && (
+          <div className="p-4 bg-red-950/30 border border-red-500/40 rounded-xl text-red-300 font-mono text-xs flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+            {error}
           </div>
+        )}
 
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs font-mono">
-            <div className="p-2.5 bg-neutral-950 rounded-lg border border-white/5">
-              <div className="text-neutral-500 text-[10px]">Candidates Evaluated</div>
-              <div className="text-base text-neutral-100 font-bold">{searchResults.candidate_count}</div>
+        {/* Results Section */}
+        {searchMode === "duplicates" && duplicateResults && (
+          <div className="space-y-4">
+            <div className="flex justify-between items-center bg-[#121212] border border-white/10 rounded-xl p-4 font-mono text-xs">
+              <span className="text-neutral-300 font-bold">
+                Near-Duplicate Candidates ({duplicateResults.duplicate_pairs_found} pairs identified in {duplicateResults.execution_time_ms}ms)
+              </span>
+              <span className="text-amber-400">
+                Threshold $\ge$ {(duplicateResults.threshold_used * 100).toFixed(0)}%
+              </span>
             </div>
 
-            <div className="p-2.5 bg-neutral-950 rounded-lg border border-white/5">
-              <div className="text-neutral-500 text-[10px]">Matches Returned</div>
-              <div className="text-base text-emerald-400 font-bold">{searchResults.returned_count}</div>
-            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {duplicateResults.pairs.map((pair, idx) => (
+                <div
+                  key={idx}
+                  className="bg-[#121212] border border-amber-500/30 rounded-xl p-4 space-y-3 font-mono text-xs"
+                >
+                  <div className="flex justify-between items-center border-b border-white/10 pb-2">
+                    <span className="text-amber-400 font-bold">
+                      Pair #{idx + 1}: {(pair.similarity_score * 100).toFixed(1)}% Cosine Similarity
+                    </span>
+                    <span className="text-neutral-500 text-[10px]">Distance: {pair.distance.toFixed(3)}</span>
+                  </div>
 
-            <div className="p-2.5 bg-neutral-950 rounded-lg border border-white/5">
-              <div className="text-neutral-500 text-[10px]">Embedding Time</div>
-              <div className="text-base text-amber-400 font-bold">{searchResults.embedding_time_ms.toFixed(1)}ms</div>
-            </div>
+                  <div className="grid grid-cols-2 gap-3 text-[11px]">
+                    <div className="p-2.5 bg-[#181818] rounded border border-white/5 space-y-1">
+                      <div className="text-blue-400 font-bold">{pair.asset_a.title}</div>
+                      <div className="text-neutral-500 text-[10px]">{pair.asset_a.asset_type}</div>
+                    </div>
 
-            <div className="p-2.5 bg-neutral-950 rounded-lg border border-white/5">
-              <div className="text-neutral-500 text-[10px]">Search Duration</div>
-              <div className="text-base text-purple-400 font-bold">{searchResults.search_time_ms.toFixed(1)}ms</div>
-            </div>
+                    <div className="p-2.5 bg-[#181818] rounded border border-white/5 space-y-1">
+                      <div className="text-purple-400 font-bold">{pair.asset_b.title}</div>
+                      <div className="text-neutral-500 text-[10px]">{pair.asset_b.asset_type}</div>
+                    </div>
+                  </div>
 
-            <div className="p-2.5 bg-neutral-950 rounded-lg border border-white/5">
-              <div className="text-neutral-500 text-[10px]">Total Execution</div>
-              <div className="text-base text-blue-400 font-bold">{searchResults.total_execution_time_ms.toFixed(1)}ms</div>
-            </div>
-          </div>
-        </Card>
-      )}
-
-      {/* Query vs Results Main Workspace */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left: Query Inspector (3 cols) */}
-        <div className="lg:col-span-3 space-y-4">
-          <Card className="p-4 space-y-3">
-            <div className="text-xs font-semibold text-neutral-300 uppercase tracking-wider flex items-center gap-2 border-b border-white/10 pb-2">
-              <Zap className="w-3.5 h-3.5 text-amber-400" />
-              Query Source
-            </div>
-
-            {queryMode === "upload" && queryPreview ? (
-              <div className="space-y-2">
-                <img src={queryPreview} alt="Query Source" className="w-full max-h-48 rounded-lg object-contain border border-blue-500/30 bg-neutral-950" />
-                <div className="p-2.5 bg-neutral-950 rounded text-[11px] font-mono text-neutral-400 space-y-1 border border-white/5">
-                  <div>Source: Uploaded File</div>
-                  <div>Name: {queryFile?.name || "query_image"}</div>
-                  <div>Size: {((queryFile?.size || 0) / 1024).toFixed(1)} KB</div>
+                  <div className="text-[10px] text-neutral-400 bg-[#161616] p-2 rounded border border-white/5">
+                    💡 {pair.recommendation}
+                  </div>
                 </div>
-              </div>
-            ) : queryMode === "record" && selectedRecordId ? (
-              <div className="p-3 bg-neutral-950 rounded-lg border border-purple-500/30 space-y-2 text-xs font-mono">
-                <div className="text-purple-400 font-bold">Record ID: {selectedRecordId}</div>
-                <div className="text-neutral-400">Indexed Record in Visual Memory</div>
-              </div>
-            ) : (
-              <div className="p-6 text-center text-xs text-neutral-500 border border-dashed border-white/10 rounded-lg">
-                No query source selected
-              </div>
-            )}
-          </Card>
-        </div>
+              ))}
+            </div>
+          </div>
+        )}
 
-        {/* Right: Ranked Results Gallery (9 cols) */}
-        <div className="lg:col-span-9 space-y-4">
-          {searchResults ? (
-            <Card className="p-5 space-y-4">
-              <div className="flex items-center justify-between border-b border-white/10 pb-3">
-                <h3 className="text-sm font-semibold text-neutral-200 flex items-center gap-2">
-                  <BarChart3 className="w-4 h-4 text-emerald-400" />
-                  Ranked Visual Similarity Results ({searchResults.results.length})
-                </h3>
-                <span className="text-xs text-neutral-400 font-mono">
-                  Showing Top-{topK} (Threshold &gt;= {(threshold * 100).toFixed(0)}%)
+        {searchMode !== "duplicates" && searchResults && (
+          <div className="space-y-6">
+            {/* Telemetry Bar */}
+            <div className="bg-[#121212] border border-white/10 rounded-xl p-4 flex flex-wrap justify-between items-center gap-4 font-mono text-xs">
+              <div className="flex items-center gap-3">
+                <span className="text-emerald-400 font-bold">
+                  {searchResults.returned_count} matches found
+                </span>
+                <span className="text-neutral-500">|</span>
+                <span className="text-neutral-400">
+                  Evaluated {searchResults.candidate_count} indexed visual assets
                 </span>
               </div>
 
-              {searchResults.results.length === 0 ? (
-                <div className="py-16 text-center text-xs text-neutral-400 space-y-2">
-                  <div className="w-10 h-10 rounded-full bg-neutral-900 text-neutral-500 mx-auto flex items-center justify-center">
-                    <Search className="w-5 h-5" />
-                  </div>
-                  <div>No visual memory matches satisfied minimum similarity threshold ({(threshold * 100).toFixed(0)}%).</div>
-                  <div className="text-neutral-500">Try lowering threshold or adding more images to Visual Memory.</div>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {searchResults.results.map((item) => (
+              <div className="flex items-center gap-4 text-neutral-500 text-[11px]">
+                <span>Search: {searchResults.search_time_ms}ms</span>
+                <span>Total: {searchResults.total_execution_time_ms}ms</span>
+                <span className="text-blue-400">{searchResults.model_used}</span>
+              </div>
+            </div>
+
+            {/* Results Grid & Detail Inspector */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Left 2 Cols: Results Cards Grid */}
+              <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+                {searchResults.results.map((item) => {
+                  const isSelected = inspectItem?.asset.asset_id === item.asset.asset_id;
+                  const simPct = (item.similarity_score * 100).toFixed(1);
+
+                  return (
                     <div
-                      key={item.id}
-                      className="p-4 bg-neutral-950 border border-white/10 hover:border-blue-500/40 rounded-xl space-y-3 transition-all flex flex-col justify-between"
+                      key={item.asset.asset_id}
+                      onClick={() => setInspectItem(item)}
+                      className={`bg-[#121212] border rounded-xl p-4 space-y-3 cursor-pointer transition-all ${
+                        isSelected
+                          ? "border-blue-500 bg-blue-950/10 shadow-lg shadow-blue-500/20"
+                          : "border-white/10 hover:border-white/20"
+                      }`}
                     >
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-2">
-                            <span className="w-7 h-7 rounded-lg bg-blue-500/15 border border-blue-500/30 text-blue-400 font-mono font-bold text-xs flex items-center justify-center">
-                              #{item.rank}
-                            </span>
-                            <span className="font-mono text-xs font-semibold text-neutral-200 truncate max-w-[140px]">
-                              {item.id}
-                            </span>
-                          </div>
+                      <div className="flex justify-between items-center font-mono text-xs">
+                        <span
+                          className={`px-2 py-0.5 rounded font-bold ${
+                            item.similarity_score > 0.9
+                              ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                              : item.similarity_score > 0.8
+                              ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                              : "bg-neutral-800 text-neutral-300 border border-white/10"
+                          }`}
+                        >
+                          {simPct}% Similarity
+                        </span>
 
-                          <div className="text-right">
-                            <span className="text-base font-mono font-bold text-emerald-400">
-                              {(item.similarity_score * 100).toFixed(1)}%
-                            </span>
-                            <div className="text-[10px] text-neutral-500 font-mono uppercase">Similarity</div>
-                          </div>
+                        <span className="text-[10px] text-neutral-500 font-mono">
+                          Rank #{item.rank}
+                        </span>
+                      </div>
+
+                      {/* Visual Card Canvas Box */}
+                      <div className="aspect-video bg-[#0c0c0c] rounded-lg border border-white/5 flex flex-col items-center justify-center p-3 relative overflow-hidden">
+                        <div className="absolute inset-0 bg-[radial-gradient(#1f1f1f_1px,transparent_1px)] [background-size:12px_12px] opacity-40" />
+                        <div className="z-10 text-center space-y-1 font-mono">
+                          <div className="text-xs font-bold text-white">{item.asset.title}</div>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-600/30 text-blue-300 font-bold">
+                            {item.asset.asset_type}
+                          </span>
                         </div>
+                      </div>
 
-                        <div className="grid grid-cols-2 gap-2 text-[11px] font-mono bg-neutral-900/60 p-2.5 rounded-lg border border-white/5">
-                          <div className="text-neutral-400">Distance: <span className="text-neutral-200">{item.distance.toFixed(4)}</span></div>
-                          <div className="text-neutral-400 truncate">Format: <span className="text-neutral-200">{item.image_metadata?.format || "RGB"}</span></div>
-                          <div className="text-neutral-400 truncate">Resolution: <span className="text-neutral-200">{item.image_metadata?.width || 224}x{item.image_metadata?.height || 224}</span></div>
-                          <div className="text-neutral-400 truncate">Model: <span className="text-neutral-200">siglip</span></div>
+                      <div className="space-y-1 font-mono text-[11px] text-neutral-400">
+                        <div className="flex justify-between">
+                          <span>Source:</span>
+                          <span className="text-white">
+                            {item.asset.source_video_id || item.asset.source_dataset_id || "Visual Memory"}
+                          </span>
                         </div>
-
-                        {item.tags.length > 0 && (
-                          <div className="flex flex-wrap gap-1">
-                            {item.tags.map((t) => (
-                              <span key={t} className="text-[10px] bg-blue-500/10 text-blue-300 px-2 py-0.5 rounded border border-blue-500/20 flex items-center gap-1">
-                                <Tag className="w-2.5 h-2.5" />
-                                {t}
-                              </span>
-                            ))}
+                        {item.asset.timestamp_sec !== undefined && (
+                          <div className="flex justify-between">
+                            <span>Timestamp:</span>
+                            <span className="text-cyan-400">{item.asset.timestamp_sec.toFixed(1)}s</span>
+                          </div>
+                        )}
+                        {item.asset.track_id !== undefined && (
+                          <div className="flex justify-between">
+                            <span>Track:</span>
+                            <span className="text-purple-400">#{item.asset.track_id}</span>
                           </div>
                         )}
                       </div>
 
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        className="w-full justify-center mt-2 text-xs"
-                        icon={<Info className="w-3.5 h-3.5" />}
-                        onClick={() => setInspectItem(item)}
-                      >
-                        Inspect Match Details
-                      </Button>
+                      {/* Action Links */}
+                      <div className="flex items-center gap-2 pt-2 border-t border-white/5 font-mono text-[10px]">
+                        <Link href={item.action_link} className="flex-1">
+                          <button className="w-full text-center py-1 rounded bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 transition-all font-bold">
+                            [ Open Source ]
+                          </button>
+                        </Link>
+
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSearchMode("frame");
+                            if (item.asset.source_video_id) setQueryVideoId(item.asset.source_video_id);
+                            if (item.asset.timestamp_sec !== undefined) setQueryTimestampSec(item.asset.timestamp_sec);
+                            handleRunSearch();
+                          }}
+                          className="px-2 py-1 rounded bg-[#1c1c1c] hover:bg-[#252525] text-neutral-300 border border-white/5"
+                          title="Search similar to this match"
+                        >
+                          Find Similar
+                        </button>
+                      </div>
                     </div>
-                  ))}
-                </div>
-              )}
-            </Card>
-          ) : (
-            <Card className="p-12 flex flex-col items-center justify-center text-center space-y-4 min-h-[440px] bg-neutral-900/20 border-dashed">
-              <div className="w-14 h-14 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
-                <Search className="w-7 h-7" />
+                  );
+                })}
               </div>
-              <div className="space-y-1 max-w-sm">
-                <h4 className="text-base font-semibold text-neutral-200">Visual Search Research Workspace</h4>
-                <p className="text-xs text-neutral-400">
-                  Select a query source on the top panel and click &quot;Execute Visual Search&quot; to compute feature matrix distance and rank candidates.
-                </p>
+
+              {/* Right Col: Selected Result Deep Inspector */}
+              <div className="space-y-4">
+                {inspectItem ? (
+                  <div className="bg-[#121212] border border-white/10 rounded-xl p-5 space-y-4 font-mono text-xs sticky top-6">
+                    <div className="flex justify-between items-center border-b border-white/10 pb-3">
+                      <h4 className="font-semibold text-white flex items-center gap-2">
+                        <Eye className="w-4 h-4 text-blue-400" />
+                        Selected Match Inspector
+                      </h4>
+                      <span className="text-emerald-400 font-bold">
+                        {(inspectItem.similarity_score * 100).toFixed(1)}% Match
+                      </span>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="text-neutral-400 text-[10px]">Asset Title</div>
+                      <div className="font-bold text-white text-sm">{inspectItem.asset.title}</div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 text-[11px]">
+                      <div className="p-2.5 bg-[#181818] rounded border border-white/5 space-y-0.5">
+                        <div className="text-neutral-500 text-[10px]">Asset Type</div>
+                        <div className="font-bold text-blue-400">{inspectItem.asset.asset_type}</div>
+                      </div>
+
+                      <div className="p-2.5 bg-[#181818] rounded border border-white/5 space-y-0.5">
+                        <div className="text-neutral-500 text-[10px]">Distance</div>
+                        <div className="font-bold text-white">{inspectItem.distance.toFixed(4)}</div>
+                      </div>
+
+                      <div className="p-2.5 bg-[#181818] rounded border border-white/5 space-y-0.5">
+                        <div className="text-neutral-500 text-[10px]">Model Space</div>
+                        <div className="font-bold text-amber-400">{inspectItem.asset.embedding_model}</div>
+                      </div>
+
+                      <div className="p-2.5 bg-[#181818] rounded border border-white/5 space-y-0.5">
+                        <div className="text-neutral-500 text-[10px]">Dimension</div>
+                        <div className="font-bold text-purple-400">768 Dense Float32</div>
+                      </div>
+                    </div>
+
+                    <div className="p-3 bg-[#161616] rounded-lg border border-white/5 space-y-1.5">
+                      <div className="text-neutral-400 font-bold text-[10px] uppercase tracking-wider">
+                        Source Provenance Trace
+                      </div>
+                      <div className="text-neutral-300 text-[11px] leading-relaxed">
+                        {inspectItem.evidence_notes}
+                      </div>
+                    </div>
+
+                    <div className="pt-2 flex flex-col gap-2">
+                      <Link href={inspectItem.action_link}>
+                        <Button variant="primary" size="sm" className="w-full" icon={<Video className="w-3.5 h-3.5" />}>
+                          Open in Video Lab
+                        </Button>
+                      </Link>
+
+                      <Link href={`/explorer`}>
+                        <Button variant="secondary" size="sm" className="w-full" icon={<Compass className="w-3.5 h-3.5" />}>
+                          View in Embedding Explorer
+                        </Button>
+                      </Link>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-8 text-center text-xs text-neutral-500 bg-[#121212] border border-white/10 rounded-xl font-mono">
+                    Select any search result card to inspect vector telemetry and source provenance.
+                  </div>
+                )}
               </div>
-            </Card>
-          )}
-        </div>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Match Inspection Modal */}
-      {inspectItem && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#111] border border-white/10 rounded-2xl max-w-lg w-full p-6 space-y-5 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
-              <div className="flex items-center space-x-2">
-                <Badge variant="success">Rank #{inspectItem.rank}</Badge>
-                <h3 className="text-sm font-semibold text-neutral-200 font-mono">{inspectItem.id}</h3>
-              </div>
-              <button onClick={() => setInspectItem(null)} className="text-neutral-400 hover:text-white transition-colors">
-                <X className="w-5 h-5" />
+      {/* Search History Drawer */}
+      {showHistoryDrawer && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-end">
+          <div className="bg-[#121212] border-l border-white/10 w-full max-w-md h-full p-6 space-y-4 font-mono text-xs overflow-y-auto">
+            <div className="flex justify-between items-center border-b border-white/10 pb-3">
+              <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                <History className="w-4 h-4 text-purple-400" />
+                Visual Search History Logs
+              </h3>
+              <button onClick={() => setShowHistoryDrawer(false)} className="text-neutral-400 hover:text-white">
+                ✕
               </button>
             </div>
 
-            <div className="space-y-4 text-xs font-mono">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="p-3 bg-neutral-950 rounded-lg border border-white/5 space-y-1">
-                  <div className="text-neutral-500 uppercase text-[10px]">Similarity Score</div>
-                  <div className="text-lg text-emerald-400 font-bold">{(inspectItem.similarity_score * 100).toFixed(2)}%</div>
+            <div className="space-y-2">
+              {searchHistory.map((h) => (
+                <div
+                  key={h.search_id}
+                  className="p-3 bg-[#181818] border border-white/5 rounded-lg space-y-1 hover:border-purple-500/40 transition-all"
+                >
+                  <div className="flex justify-between items-center">
+                    <span className="text-purple-400 font-bold">{h.query_type}</span>
+                    <span className="text-[10px] text-neutral-500">{h.total_time_ms}ms</span>
+                  </div>
+                  <div className="text-white text-xs font-semibold">
+                    {h.query_info?.summary || `Search ${h.search_id}`}
+                  </div>
+                  <div className="flex justify-between items-center text-[10px] text-neutral-500 pt-1">
+                    <span>Matches: {h.returned_count}</span>
+                    <span>{new Date(h.timestamp).toLocaleTimeString()}</span>
+                  </div>
                 </div>
-
-                <div className="p-3 bg-neutral-950 rounded-lg border border-white/5 space-y-1">
-                  <div className="text-neutral-500 uppercase text-[10px]">Distance Metric</div>
-                  <div className="text-lg text-purple-300 font-bold">{inspectItem.distance.toFixed(4)}</div>
-                </div>
-              </div>
-
-              <div className="p-3 bg-neutral-950 rounded-lg border border-white/5 space-y-2">
-                <div className="text-neutral-400 font-semibold border-b border-white/5 pb-1">Image Parameters</div>
-                <div className="grid grid-cols-2 gap-2 text-neutral-300">
-                  <div>Width: {inspectItem.image_metadata?.width || "N/A"} px</div>
-                  <div>Height: {inspectItem.image_metadata?.height || "N/A"} px</div>
-                  <div>Format: {inspectItem.image_metadata?.format || "RGB"}</div>
-                  <div>Mode: {inspectItem.image_metadata?.mode || "RGB"}</div>
-                </div>
-              </div>
-
-              <div className="p-3 bg-neutral-950 rounded-lg border border-white/5 space-y-2">
-                <div className="text-neutral-400 font-semibold border-b border-white/5 pb-1">Embedding Metadata</div>
-                <div className="space-y-1 text-neutral-300">
-                  <div>Model: {inspectItem.embedding_model}</div>
-                  <div>Dimension: 768-D Dense Vector</div>
-                  <div>Indexed At: {new Date(inspectItem.indexed_at).toLocaleString()}</div>
-                </div>
-              </div>
+              ))}
             </div>
-
-            <Button variant="secondary" size="sm" className="w-full justify-center" onClick={() => setInspectItem(null)}>
-              Close Inspector
-            </Button>
           </div>
         </div>
       )}
