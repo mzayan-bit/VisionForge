@@ -1,6 +1,5 @@
 """Comprehensive Unit and Integration Tests for Model Evaluation & Error Analysis Workspace."""
 
-import pytest
 from fastapi.testclient import TestClient
 
 from visionforge.evaluation.analyzer import ErrorAnalyzer

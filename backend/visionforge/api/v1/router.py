@@ -10,6 +10,7 @@ from visionforge.api.v1.embeddings import router as embeddings_router
 from visionforge.api.v1.evaluation import router as evaluation_router
 from visionforge.api.v1.events import router as events_router
 from visionforge.api.v1.experiments import router as experiments_router
+from visionforge.api.v1.explainability import router as explainability_router
 from visionforge.api.v1.explorer import router as explorer_router
 from visionforge.api.v1.health import router as health_router
 from visionforge.api.v1.inference import router as inference_router
@@ -27,6 +28,7 @@ router.include_router(health_router)
 router.include_router(system_router)
 router.include_router(models_router)
 router.include_router(lifecycle_router)
+router.include_router(explainability_router)
 router.include_router(benchmarks_router)
 router.include_router(embeddings_router)
 router.include_router(memory_router)
