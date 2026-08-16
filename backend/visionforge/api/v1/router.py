@@ -13,6 +13,7 @@ from visionforge.api.v1.experiments import router as experiments_router
 from visionforge.api.v1.explorer import router as explorer_router
 from visionforge.api.v1.health import router as health_router
 from visionforge.api.v1.inference import router as inference_router
+from visionforge.api.v1.lifecycle import router as lifecycle_router
 from visionforge.api.v1.memory import router as memory_router
 from visionforge.api.v1.models import router as models_router
 from visionforge.api.v1.query import router as query_router
@@ -25,6 +26,7 @@ router = APIRouter(prefix="/v1")
 router.include_router(health_router)
 router.include_router(system_router)
 router.include_router(models_router)
+router.include_router(lifecycle_router)
 router.include_router(benchmarks_router)
 router.include_router(embeddings_router)
 router.include_router(memory_router)
