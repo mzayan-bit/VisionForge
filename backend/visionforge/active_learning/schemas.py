@@ -1,7 +1,17 @@
-"""VisionForge Active Learning & Intelligent Sample Selection Schemas."""
+"""VisionForge Active Learning & Human-in-the-Loop Workflow Schemas.
+
+Comprehensive domain models for:
+- Uncertainty Sampling, Diversity Farthest-Point Clustering, and Hybrid Prioritization
+- Evidence-Based Candidate Explanations
+- Interactive Human Review Sessions with Keyboard Shortcuts
+- Multi-Reviewer Consistency & Consensus Resolution
+- Active Learning Cycles, Dataset Version Creation, and Retraining Integration
+- Longitudinal Cycle Progression & Diminishing Returns Tracking
+"""
 
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -11,18 +21,45 @@ class SelectionStrategy(StrEnum):
 
     UNCERTAINTY = "UNCERTAINTY"
     DIVERSITY = "DIVERSITY"
+    HYBRID = "HYBRID"
     UNCERTAINTY_DIVERSITY = "UNCERTAINTY_DIVERSITY"
     NOVELTY = "NOVELTY"
+    MODEL_DISAGREEMENT = "MODEL_DISAGREEMENT"
+    CLASS_AWARE = "CLASS_AWARE"
+    FAILURE_AWARE = "FAILURE_AWARE"
 
 
 class ReviewStatus(StrEnum):
-    """Human review decision status for recommended samples."""
+    """Lifecycle queue status for candidate samples."""
 
     UNREVIEWED = "UNREVIEWED"
+    IN_REVIEW = "IN_REVIEW"
     ACCEPTED = "ACCEPTED"
     REJECTED = "REJECTED"
     SKIPPED = "SKIPPED"
+    FLAGGED = "FLAGGED"
     MARKED_FOR_LABELING = "MARKED_FOR_LABELING"
+
+
+class ReviewDecisionType(StrEnum):
+    """Granular human review decision taxonomy."""
+
+    CONFIRMED = "CONFIRMED"
+    INCORRECT_PREDICTION = "INCORRECT_PREDICTION"
+    ANNOTATION_ISSUE = "ANNOTATION_ISSUE"
+    VALID_HARD_EXAMPLE = "VALID_HARD_EXAMPLE"
+    DUPLICATE = "DUPLICATE"
+    NOT_USEFUL = "NOT_USEFUL"
+    NEEDS_MORE_REVIEW = "NEEDS_MORE_REVIEW"
+    SKIP = "SKIP"
+
+
+class ReviewerAgreementStatus(StrEnum):
+    """Consensus state across multiple reviewers for the same sample."""
+
+    UNANIMOUS = "UNANIMOUS"
+    SPLIT = "SPLIT"
+    NEEDS_RESOLUTION = "NEEDS_RESOLUTION"
 
 
 class SignalWeights(BaseModel):
@@ -31,14 +68,14 @@ class SignalWeights(BaseModel):
     uncertainty: float = Field(
         default=0.40, ge=0.0, le=1.0, description="Model prediction uncertainty weight"
     )
-    novelty: float = Field(
-        default=0.25, ge=0.0, le=1.0, description="Embedding space distance novelty weight"
-    )
     diversity: float = Field(
-        default=0.25, ge=0.0, le=1.0, description="Visual coverage diversity weight"
+        default=0.40, ge=0.0, le=1.0, description="Visual coverage diversity weight"
     )
     failure: float = Field(
-        default=0.10, ge=0.0, le=1.0, description="Historical failure relevance weight"
+        default=0.20, ge=0.0, le=1.0, description="Historical failure relevance weight"
+    )
+    novelty: float = Field(
+        default=0.00, ge=0.0, le=1.0, description="Embedding space distance novelty weight"
     )
     quality: float = Field(
         default=0.00, ge=0.0, le=1.0, description="Image quality signal weight"
@@ -70,19 +107,176 @@ class SampleSignals(BaseModel):
     )
 
 
-class RankedSample(BaseModel):
-    """Individual recommended sample entry in the review queue."""
+class CandidateExplanation(BaseModel):
+    """Evidence-based explanation of why a sample was prioritized for review."""
 
-    rank: int = Field(description="Sample recommendation rank index (1 = top choice)")
+    composite_priority: float = Field(description="Final composite priority [0.0, 1.0]")
+    uncertainty_contribution: float = Field(description="Contribution from model uncertainty margin")
+    diversity_contribution: float = Field(description="Contribution from visual representation diversity")
+    failure_contribution: float = Field(description="Contribution from benchmark error relevance")
+    class_rarity_flag: bool = Field(default=False, description="Flagged if belongs to under-represented class")
+    model_disagreement_flag: bool = Field(default=False, description="Flagged if baseline and candidate disagree")
+    plain_text_reasons: list[str] = Field(
+        default_factory=list, description="Bullet-point plain language explanations for researcher"
+    )
+
+
+class CandidateSampleDetail(BaseModel):
+    """Detailed candidate sample representation for human review cards."""
+
+    rank: int = Field(description="Rank index in review queue (1 = top priority)")
     image_id: str = Field(description="Unique image identifier")
     image_path: str = Field(description="Image file location")
-    composite_score: float = Field(description="Final composite rank score [0.0, 1.0]")
-    signals: SampleSignals = Field(description="Detailed breakdown of individual signal scores")
-    recommendation_reason: str = Field(description="Plain-English explanation of recommendation signal rationale")
-    review_status: ReviewStatus = Field(
-        default=ReviewStatus.UNREVIEWED, description="Human review status"
+    split: str = Field(default="unlabeled", description="Source split or partition")
+    composite_score: float = Field(description="Final composite priority score [0.0, 1.0]")
+    signals: SampleSignals = Field(description="Detailed signal breakdown")
+    explanation: CandidateExplanation = Field(description="Evidence-based selection rationale")
+    recommendation_reason: str = Field(default="", description="Human-readable reason")
+    ground_truth_boxes: list[dict[str, Any]] = Field(
+        default_factory=list, description="Ground truth bounding boxes if available"
     )
-    notes: str | None = Field(default=None, description="Optional researcher feedback note")
+    predicted_boxes: list[dict[str, Any]] = Field(
+        default_factory=list, description="Model candidate predictions"
+    )
+    predicted_class: str | None = Field(default=None, description="Top predicted class")
+    confidence: float | None = Field(default=None, description="Top prediction confidence")
+    iou: float | None = Field(default=None, description="Intersection over Union with GT if available")
+    similar_sample_ids: list[str] = Field(
+        default_factory=list, description="Nearest neighbor sample IDs from visual memory"
+    )
+    review_status: ReviewStatus = Field(
+        default=ReviewStatus.UNREVIEWED, description="Queue review state"
+    )
+    review_decision: ReviewDecisionType | None = Field(
+        default=None, description="Recorded human review decision"
+    )
+    notes: str | None = Field(default=None, description="Reviewer feedback notes")
+
+
+class ReviewerDecisionRecord(BaseModel):
+    """Individual human review decision audit log record."""
+
+    decision_id: str = Field(description="Unique decision record ID")
+    cycle_id: str = Field(description="Associated Active Learning Cycle ID")
+    sample_id: str = Field(description="Target image sample ID")
+    reviewer_id: str = Field(description="Researcher / Reviewer identity")
+    decision: ReviewDecisionType = Field(description="Human decision taxonomy")
+    ground_truth_class: str | None = Field(default=None, description="Confirmed or corrected class")
+    predicted_class: str | None = Field(default=None, description="Original model predicted class")
+    confidence: float | None = Field(default=None, description="Original prediction confidence")
+    notes: str = Field(default="", description="Reviewer notes and annotations")
+    bbox_corrections: list[dict[str, Any]] = Field(
+        default_factory=list, description="Adjusted bounding box geometry if corrected"
+    )
+    timestamp: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
+
+
+class SampleReviewConsensus(BaseModel):
+    """Multi-reviewer consensus evaluation for a sample."""
+
+    sample_id: str = Field(description="Target sample ID")
+    decisions: list[ReviewerDecisionRecord] = Field(default_factory=list)
+    consensus_status: ReviewerAgreementStatus = Field(default=ReviewerAgreementStatus.UNANIMOUS)
+    final_decision: ReviewDecisionType | None = Field(default=None)
+
+
+class ActiveLearningCycle(BaseModel):
+    """Complete cycle entity for Active Learning & Human-in-the-Loop workflow."""
+
+    cycle_id: str = Field(description="Unique cycle ID ('al_cycle_...')")
+    name: str = Field(description="Descriptive cycle name")
+    dataset_id: str = Field(description="Source dataset identifier")
+    dataset_version: str = Field(default="v1.0.0", description="Input dataset version tag (e.g. 'v12')")
+    model_id: str = Field(description="Target model identifier (e.g. 'yolo11s.pt')")
+    model_version: str = Field(default="1.0.0", description="Model version tag")
+    candidate_pool_id: str = Field(default="pool_01", description="Candidate image pool identifier")
+    candidate_pool_size: int = Field(default=0, description="Total eligible candidate pool size")
+    strategy: SelectionStrategy = Field(default=SelectionStrategy.HYBRID, description="Selection strategy")
+    budget: int = Field(default=50, ge=1, le=500, description="Exact human review sample budget")
+    weights: SignalWeights = Field(default_factory=SignalWeights, description="Signal combination weights")
+    selected_samples: list[CandidateSampleDetail] = Field(
+        default_factory=list, description="Prioritized candidates selected within budget"
+    )
+    review_counts: dict[str, int] = Field(
+        default_factory=lambda: {
+            "pending": 0,
+            "in_review": 0,
+            "reviewed": 0,
+            "skipped": 0,
+            "flagged": 0,
+        },
+        description="Live queue count breakdown",
+    )
+    resulting_dataset_version: str | None = Field(
+        default=None, description="New dataset version produced upon explicit commit (e.g. 'v13')"
+    )
+    benchmark_before_map50: float | None = Field(
+        default=None, description="mAP@50 on baseline dataset before curation"
+    )
+    benchmark_after_map50: float | None = Field(
+        default=None, description="mAP@50 on curated dataset after retraining"
+    )
+    status: str = Field(default="PLANNING", description="'PLANNING', 'IN_REVIEW', 'COMPLETED'")
+    created_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
+    completed_at: str | None = Field(default=None)
+    # Backward compatibility
+    run_id: str | None = Field(default=None, description="Legacy run ID alias")
+    top_k: int | None = Field(default=None, description="Legacy top-K alias")
+    experiment_id: str | None = Field(default=None, description="Optional experiment ID")
+
+    def model_post_init(self, __context: Any) -> None:
+        if not self.run_id:
+            self.run_id = self.cycle_id
+        if not self.top_k:
+            self.top_k = self.budget
+
+
+class ActiveLearningCycleHistoryItem(BaseModel):
+    """Longitudinal progression milestone tracking diminishing returns across cycles."""
+
+    cycle_id: str = Field(description="Cycle ID")
+    name: str = Field(description="Cycle name")
+    dataset_version_before: str = Field(description="Input dataset version")
+    dataset_version_after: str | None = Field(default=None, description="Output dataset version")
+    model_version_before: str = Field(description="Input model version")
+    model_version_after: str | None = Field(default=None, description="Retrained model version")
+    samples_reviewed: int = Field(description="Number of human-reviewed samples")
+    strategy: SelectionStrategy = Field(description="Selection strategy used")
+    budget: int = Field(description="Configured review budget")
+    map50_before: float | None = Field(default=None, description="Baseline mAP@50")
+    map50_after: float | None = Field(default=None, description="Retrained mAP@50")
+    delta_map50: float | None = Field(default=None, description="Empirical mAP@50 gain (after - before)")
+    created_at: str = Field(description="Cycle creation ISO timestamp")
+
+
+class StoppingCriteriaConfig(BaseModel):
+    """Researcher-configurable criteria for terminating active learning iterations."""
+
+    max_cycles: int = Field(default=5, ge=1, le=50, description="Maximum iterations")
+    budget_per_cycle: int = Field(default=50, ge=1, le=500, description="Samples reviewed per cycle")
+    target_map50: float = Field(default=0.85, ge=0.0, le=1.0, description="Target performance threshold")
+    min_improvement_threshold: float = Field(
+        default=0.005, ge=0.0, le=0.1, description="Minimum acceptable mAP delta before stopping"
+    )
+
+
+# ─── Backward-Compatibility Aliases ──────────────────────────────────
+RankedSample = CandidateSampleDetail
+ActiveLearningRun = ActiveLearningCycle
+
+
+class ReviewDecisionRequest(BaseModel):
+    """Payload for submitting a human review decision on a sample."""
+
+    cycle_id: str | None = Field(default=None, description="Active learning cycle ID")
+    run_id: str | None = Field(default=None, description="Legacy run ID")
+    image_id: str = Field(description="Sample image ID")
+    decision: ReviewDecisionType | None = Field(default=None, description="Review decision taxonomy")
+    status: ReviewStatus | None = Field(default=None, description="Legacy review status")
+    reviewer_id: str = Field(default="Researcher", description="Reviewer identity")
+    ground_truth_class: str | None = Field(default=None, description="Corrected class")
+    notes: str | None = Field(default=None, description="Reviewer notes")
+    bbox_corrections: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class CandidatePoolDescriptor(BaseModel):
@@ -101,40 +295,10 @@ class CandidatePoolDescriptor(BaseModel):
     )
 
 
-class ActiveLearningRun(BaseModel):
-    """Complete record of an Active Learning sample selection execution."""
-
-    run_id: str = Field(description="Unique active learning run ID ('al_run_...')")
-    experiment_id: str | None = Field(default=None, description="Associated experiment ID")
-    model_id: str = Field(description="Target model identifier used for uncertainty signals")
-    model_version: str = Field(default="1.0.0", description="Model version tag")
-    dataset_id: str = Field(description="Target dataset identifier")
-    candidate_pool_id: str = Field(description="Candidate image pool identifier")
-    strategy: SelectionStrategy = Field(description="Selected sample ranking strategy")
-    weights: SignalWeights = Field(default_factory=SignalWeights, description="Signal combination weights")
-    top_k: int = Field(default=25, ge=1, le=500, description="Number of top candidates requested")
-    selected_samples: list[RankedSample] = Field(
-        default_factory=list, description="Ranked candidate sample recommendations"
-    )
-    status: str = Field(default="COMPLETED", description="Run execution status")
-    created_at: str = Field(
-        default_factory=lambda: datetime.now(UTC).isoformat(), description="Execution ISO timestamp"
-    )
-
-
-class ReviewDecisionRequest(BaseModel):
-    """Payload for submitting a human review decision on a sample."""
-
-    run_id: str = Field(description="Active learning run ID")
-    image_id: str = Field(description="Sample image ID")
-    status: ReviewStatus = Field(description="Review decision status")
-    notes: str | None = Field(default=None, description="Researcher notes")
-
-
 class SelectionBiasReport(BaseModel):
     """Telemetry report measuring potential selection bias across recommended samples."""
 
-    run_id: str = Field(description="Active learning run ID")
+    run_id: str = Field(description="Active learning run/cycle ID")
     strategy: SelectionStrategy = Field(description="Selection strategy used")
     total_selected: int = Field(description="Total selected sample count")
     class_distribution: dict[str, int] = Field(
@@ -152,9 +316,9 @@ class SelectionBiasReport(BaseModel):
 class StrategyComparisonRequest(BaseModel):
     """Payload for comparing two active learning selection strategies."""
 
-    dataset_id: str = Field(description="Target dataset ID")
-    model_id: str = Field(description="Target model ID")
-    candidate_pool_id: str = Field(description="Candidate pool ID")
+    dataset_id: str = Field(default="safety_v2", description="Target dataset ID")
+    model_id: str = Field(default="yolo11s.pt", description="Target model ID")
+    candidate_pool_id: str = Field(default="pool_01", description="Candidate pool ID")
     strategy_a: SelectionStrategy = Field(description="First selection strategy")
     strategy_b: SelectionStrategy = Field(description="Second selection strategy")
     top_k: int = Field(default=25, ge=1, le=200, description="Top-K sample count")
@@ -223,4 +387,3 @@ class ExecuteLoopRequest(BaseModel):
     baseline_model_id: str = Field(default="yolo11s.pt")
     active_learning_run_id: str = Field(description="Active learning run ID containing reviewed samples")
     new_version_tag: str | None = Field(default=None, description="Optional new dataset version tag (e.g. v2.1)")
-
