@@ -26,6 +26,16 @@ class TrackStatus(StrEnum):
     TERMINATED = "TERMINATED"
 
 
+class VideoSessionStatus(StrEnum):
+    """Lifecycle execution status of a video processing session / job."""
+
+    QUEUED = "QUEUED"
+    PROCESSING = "PROCESSING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    CANCELLED = "CANCELLED"
+
+
 class VideoMetadata(BaseModel):
     """Metadata describing a video file asset."""
 
@@ -38,6 +48,7 @@ class VideoMetadata(BaseModel):
     height: int = Field(description="Frame pixel height")
     codec: str = Field(default="h264", description="Video codec format")
     size_bytes: int = Field(description="File size in bytes")
+    video_fingerprint: str | None = Field(default=None, description="SHA-256 asset hash")
     created_at: str = Field(
         default_factory=lambda: datetime.now(UTC).isoformat(), description="Upload ISO timestamp"
     )
@@ -79,6 +90,20 @@ class TrajectoryPoint(BaseModel):
     width_px: float = Field(description="Bounding box width in pixels")
     height_px: float = Field(description="Bounding box height in pixels")
     bbox: list[float] = Field(description="Bounding box [x_min, y_min, x_max, y_max]")
+    instantaneous_speed_px_s: float | None = Field(
+        default=None, description="Image-space velocity (pixels/second) from previous point"
+    )
+
+
+class RegionVisit(BaseModel):
+    """Spatial zone interaction record for a track."""
+
+    region_id: str = Field(description="Region of Interest ID")
+    region_name: str = Field(description="Human readable zone name")
+    entered_sec: float = Field(description="Timestamp when object entered region")
+    exited_sec: float | None = Field(default=None, description="Timestamp when object exited region")
+    dwell_duration_sec: float = Field(default=0.0, description="Total dwell duration in seconds")
+    visit_count: int = Field(default=1, description="Number of discrete visits to this zone")
 
 
 class Track(BaseModel):
@@ -95,12 +120,26 @@ class Track(BaseModel):
     min_confidence: float = Field(description="Minimum detection confidence score")
     max_confidence: float = Field(description="Maximum detection confidence score")
     total_distance_px: float = Field(description="Total trajectory distance traversed in pixels")
-    avg_speed_px_per_sec: float = Field(description="Average pixel speed (pixels / second)")
+    avg_speed_px_per_sec: float = Field(description="Average image-space velocity (pixels / second)")
+    image_space_velocity_px_s: float = Field(
+        default=0.0, description="Explicitly labeled image-space displacement velocity"
+    )
+    observation_count: int = Field(default=0, description="Total frames where object was detected")
+    gap_count: int = Field(default=0, description="Observation gaps/interpolations along track")
     status: TrackStatus = Field(default=TrackStatus.TERMINATED, description="Track lifecycle state")
     trajectory: list[TrajectoryPoint] = Field(
         default_factory=list, description="Chronological sequence of trajectory points"
     )
     detections_count: int = Field(default=0, description="Total detection count for this track")
+    regions_visited: list[RegionVisit] = Field(
+        default_factory=list, description="List of spatial zones interacted with"
+    )
+    associated_events: list[str] = Field(
+        default_factory=list, description="List of TemporalEvent IDs triggered by this track"
+    )
+    associated_detections: list[dict[str, Any]] = Field(
+        default_factory=list, description="Linked detection metadata"
+    )
 
 
 class TemporalAnalytics(BaseModel):
@@ -113,12 +152,41 @@ class TemporalAnalytics(BaseModel):
     avg_track_duration_sec: float = Field(description="Average track visibility duration in seconds")
     longest_track_duration_sec: float = Field(description="Longest single track duration in seconds")
     avg_pixel_movement_px: float = Field(description="Average total distance traversed in pixels")
+    total_region_visits: int = Field(default=0, description="Total zone entry events")
+    avg_dwell_time_sec: float = Field(default=0.0, description="Average dwell duration across zones")
+    median_dwell_time_sec: float = Field(default=0.0, description="Median dwell duration in seconds")
+    events_per_minute: float = Field(default=0.0, description="Temporal event frequency")
     active_objects_over_time: list[dict[str, Any]] = Field(
         default_factory=list, description="Time series of active objects count per second"
     )
     detections_over_time: list[dict[str, Any]] = Field(
         default_factory=list, description="Time series of total detections per second"
     )
+
+
+class VideoSession(BaseModel):
+    """Long-running video session record with full lineage and metadata."""
+
+    session_id: str = Field(description="Unique session identifier ('vses_...')")
+    video_id: str = Field(description="Target video asset ID")
+    video_source: str = Field(description="File URI or stream endpoint source")
+    duration_sec: float = Field(description="Duration in seconds")
+    fps: float = Field(description="Video frame rate")
+    width: int = Field(description="Resolution width")
+    height: int = Field(description="Resolution height")
+    frame_count: int = Field(description="Total frame count")
+    codec: str = Field(default="h264", description="Video compression codec")
+    file_size_bytes: int = Field(default=0, description="File size in bytes")
+    processing_config: dict[str, Any] = Field(default_factory=dict)
+    model_version: str = Field(default="1.0.0", description="Detection model version used")
+    tracking_config: dict[str, Any] = Field(default_factory=dict)
+    status: VideoSessionStatus = Field(
+        default=VideoSessionStatus.COMPLETED, description="Execution status"
+    )
+    video_fingerprint: str = Field(default="sha256_mock_video", description="Cryptographic asset hash")
+    created_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
+    completed_at: str | None = Field(default=None)
+    lineage: dict[str, Any] = Field(default_factory=dict, description="Dataset/model provenance lineage")
 
 
 class VideoInferenceRun(BaseModel):
@@ -142,6 +210,20 @@ class VideoInferenceRun(BaseModel):
     processing_fps: float = Field(description="Video pipeline processing speed in frames/sec")
     inference_latency_ms: float = Field(description="Average per-frame model inference latency in ms")
     tracking_latency_ms: float = Field(description="Average per-frame tracker update latency in ms")
+
+
+class VideoComparisonResult(BaseModel):
+    """Side-by-side comparative analysis between two video analysis runs."""
+
+    comparison_id: str = Field(description="Unique comparison ID ('vcmp_...')")
+    video_a_id: str = Field(description="First video asset ID")
+    video_b_id: str = Field(description="Second video asset ID")
+    track_count_delta: int = Field(description="Difference in total tracks (B - A)")
+    event_count_delta: int = Field(description="Difference in total events (B - A)")
+    avg_dwell_delta_sec: float = Field(description="Difference in average dwell duration (B - A)")
+    tracks_by_class_delta: dict[str, int] = Field(default_factory=dict)
+    summary_findings: list[str] = Field(default_factory=list)
+    timestamp: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
 
 
 class VideoBenchmarkResult(BaseModel):

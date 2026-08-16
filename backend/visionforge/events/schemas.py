@@ -14,7 +14,12 @@ class EventType(StrEnum):
     TRACK_ENDED = "TRACK_ENDED"
     OBJECT_ENTERED_REGION = "OBJECT_ENTERED_REGION"
     OBJECT_LEFT_REGION = "OBJECT_LEFT_REGION"
+    OBJECT_STAYED_IN_REGION = "OBJECT_STAYED_IN_REGION"
     OBJECT_DWELLED = "OBJECT_DWELLED"
+    OBJECT_APPEARED = "OBJECT_APPEARED"
+    OBJECT_DISAPPEARED = "OBJECT_DISAPPEARED"
+    PROLONGED_PROXIMITY = "PROLONGED_PROXIMITY"
+    TRACK_CROSSING_REGION = "TRACK_CROSSING_REGION"
     OBJECT_STOPPED = "OBJECT_STOPPED"
     OBJECT_MOVED = "OBJECT_MOVED"
     OBJECT_COUNT_CHANGED = "OBJECT_COUNT_CHANGED"
@@ -83,6 +88,23 @@ class EventRuleConfig(BaseModel):
     )
 
 
+class EventEvidence(BaseModel):
+    """Visual verification evidence frames for a detected temporal event."""
+
+    event_id: str = Field(description="Target event ID")
+    frame_before_idx: int = Field(description="Frame index immediately before event onset")
+    event_frame_idx: int = Field(description="Key event occurrence frame index")
+    frame_after_idx: int = Field(description="Frame index immediately after event completion")
+    start_timestamp_sec: float = Field(default=0.0, description="Exact start time in seconds")
+    representative_timestamp_sec: float = Field(default=0.0, description="Peak event timestamp")
+    end_timestamp_sec: float = Field(default=0.0, description="Exact end time in seconds")
+    highlight_track_ids: list[int] = Field(description="Track IDs to highlight on evidence canvas")
+    highlight_region_id: str | None = Field(default=None, description="Associated Region ROI ID")
+    trigger_rule: str = Field(default="", description="Deterministic rule or condition that triggered event")
+    snapshot_notes: str = Field(description="Explanatory visual verification summary")
+    evidence_thumbnail_uri: str | None = Field(default=None, description="Artifact image path")
+
+
 class TemporalEvent(BaseModel):
     """Clean, explainable temporal event derived from observable visual trajectories."""
 
@@ -100,21 +122,15 @@ class TemporalEvent(BaseModel):
         default_factory=dict, description="Structured parameters (region_id, distance_px, speed_px_s, etc.)"
     )
     description: str = Field(description="Human-readable explainable event narrative")
+    trigger_rule: str = Field(
+        default="", description="Deterministic rule or evidence basis for event generation"
+    )
+    evidence: EventEvidence | None = Field(
+        default=None, description="Linked visual evidence frame metadata"
+    )
     created_at: str = Field(
         default_factory=lambda: datetime.now(UTC).isoformat(), description="Detection ISO timestamp"
     )
-
-
-class EventEvidence(BaseModel):
-    """Visual verification evidence frames for a detected temporal event."""
-
-    event_id: str = Field(description="Target event ID")
-    frame_before_idx: int = Field(description="Frame index immediately before event onset")
-    event_frame_idx: int = Field(description="Key event occurrence frame index")
-    frame_after_idx: int = Field(description="Frame index immediately after event completion")
-    highlight_track_ids: list[int] = Field(description="Track IDs to highlight on evidence canvas")
-    highlight_region_id: str | None = Field(default=None, description="Associated Region ROI ID")
-    snapshot_notes: str = Field(description="Explanatory visual verification summary")
 
 
 class EventAnalytics(BaseModel):

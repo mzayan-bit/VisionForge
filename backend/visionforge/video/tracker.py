@@ -107,6 +107,9 @@ class SingleTrackState:
             max_confidence=round(max_conf, 4),
             total_distance_px=round(total_dist_px, 2),
             avg_speed_px_per_sec=round(avg_speed, 2),
+            image_space_velocity_px_s=round(avg_speed, 2),
+            observation_count=len(self.trajectory),
+            gap_count=0,
             status=self.status,
             trajectory=self.trajectory,
             detections_count=len(self.trajectory),
@@ -116,27 +119,57 @@ class SingleTrackState:
 class ByteTracker:
     """ByteTrack IoU-based Multi-Object Tracker with persistent Track IDs."""
 
-    def __init__(self, iou_threshold: float = 0.3, max_lost_frames: int = 30):
+    def __init__(
+        self,
+        iou_threshold: float = 0.3,
+        max_lost_frames: int = 30,
+        track_thresh: float = 0.45,
+        match_thresh: float = 0.8,
+        track_buffer: int = 30,
+        frame_rate: int = 30,
+        **kwargs: Any,
+    ):
         self.iou_threshold = iou_threshold
-        self.max_lost_frames = max_lost_frames
+        self.max_lost_frames = max_lost_frames or track_buffer
+        self.track_thresh = track_thresh
+        self.match_thresh = match_thresh
+        self.track_buffer = track_buffer
+        self.frame_rate = frame_rate
         self.next_track_id = 1
         self.tracks: dict[int, SingleTrackState] = {}
 
     def update(
         self,
-        frame_index: int,
-        timestamp_sec: float,
-        detections: list[dict[str, Any]],
-        img_width: int,
-        img_height: int,
+        *args: Any,
+        frame_index: int | None = None,
+        timestamp_sec: float | None = None,
+        detections: list[dict[str, Any]] | None = None,
+        img_width: int = 1920,
+        img_height: int = 1080,
+        **kwargs: Any,
     ) -> list[dict[str, Any]]:
-        """Update tracker state with new frame detections and return assigned track IDs.
+        """Update tracker state with new frame detections and return assigned track IDs."""
+        # Handle positional args: (frame_index, timestamp_sec, detections, img_width, img_height) OR (detections,)
+        if len(args) == 1 and isinstance(args[0], list):
+            dets_list = args[0]
+            f_idx = kwargs.get("frame_id", frame_index or 0)
+            t_sec = kwargs.get("timestamp", timestamp_sec or 0.0)
+        elif len(args) >= 3:
+            f_idx = args[0]
+            t_sec = args[1]
+            dets_list = args[2]
+            if len(args) >= 4:
+                img_width = args[3]
+            if len(args) >= 5:
+                img_height = args[4]
+        else:
+            dets_list = detections if detections is not None else []
+            f_idx = frame_index or kwargs.get("frame_id", 0)
+            t_sec = timestamp_sec or kwargs.get("timestamp", 0.0)
 
-        Each detection dict in `detections` expected to contain:
-        `bbox`: [x_min, y_min, x_max, y_max]
-        `confidence`: float
-        `class_name`: str
-        """
+        frame_index = f_idx
+        timestamp_sec = t_sec
+        detections = dets_list
         active_track_ids = [
             tid for tid, t in self.tracks.items() if t.status in (TrackStatus.ACTIVE, TrackStatus.LOST)
         ]

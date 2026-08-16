@@ -1,16 +1,21 @@
 """VisionForge Video Intelligence API Routes."""
 
 import logging
+from typing import Any
 
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel, Field
 
 from visionforge.video.schemas import (
+    FrameSamplingConfig,
     FrameSamplingMode,
     TemporalAnalytics,
     Track,
+    TrajectoryPoint,
+    VideoComparisonResult,
     VideoInferenceRun,
     VideoMetadata,
+    VideoSession,
 )
 from visionforge.video.service import (
     VideoRunNotFoundError,
@@ -32,6 +37,16 @@ class CreateVideoRunRequest(BaseModel):
     custom_stride: int = Field(default=2, ge=1, le=60, description="Custom sampling stride interval")
 
 
+class CreateVideoSessionRequest(BaseModel):
+    video_id: str = Field(description="Target video asset ID")
+    model_version: str = Field(default="1.0.0", description="Model version tag")
+
+
+class CompareVideosRequest(BaseModel):
+    video_a_id: str = Field(description="First video ID")
+    video_b_id: str = Field(description="Second video ID")
+
+
 @router.post(
     "/upload",
     response_model=VideoMetadata,
@@ -44,7 +59,6 @@ async def upload_video(file: UploadFile = File(...)) -> VideoMetadata:
     if not file.filename:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Filename required.")
 
-    # Save uploaded file to temp directory
     temp_dir = service._storage_dir / "uploads"
     temp_dir.mkdir(parents=True, exist_ok=True)
     temp_path = temp_dir / file.filename
@@ -69,6 +83,62 @@ def get_video_metadata(video_id: str) -> VideoMetadata:
     return service.get_video_metadata(video_id)
 
 
+@router.get(
+    "/videos",
+    response_model=list[VideoMetadata],
+    summary="List registered video assets",
+)
+def list_videos() -> list[VideoMetadata]:
+    """List all registered video assets."""
+    service = get_video_intelligence_service()
+    return service.list_videos()
+
+
+@router.post(
+    "/sessions",
+    response_model=VideoSession,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create video analysis session",
+)
+def create_video_session(payload: CreateVideoSessionRequest) -> VideoSession:
+    """Create a tracked video session with lineage tracking."""
+    service = get_video_intelligence_service()
+    try:
+        return service.create_video_session(
+            video_id=payload.video_id,
+            model_version=payload.model_version,
+        )
+    except VideoValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.get(
+    "/sessions",
+    response_model=list[VideoSession],
+    summary="List video analysis sessions",
+)
+def list_video_sessions() -> list[VideoSession]:
+    """List all recorded video sessions."""
+    service = get_video_intelligence_service()
+    return service.list_video_sessions()
+
+
+@router.get(
+    "/sessions/{session_id}",
+    response_model=VideoSession,
+    summary="Get video session detail",
+)
+def get_video_session(session_id: str) -> VideoSession:
+    """Retrieve a single video session record."""
+    service = get_video_intelligence_service()
+    s = service.get_video_session(session_id)
+    if not s:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Session '{session_id}' not found"
+        )
+    return s
+
+
 @router.post(
     "/runs",
     response_model=VideoInferenceRun,
@@ -79,11 +149,14 @@ def create_video_run(payload: CreateVideoRunRequest) -> VideoInferenceRun:
     """Execute video object detection, ByteTrack tracking, and temporal analytics pipeline."""
     service = get_video_intelligence_service()
     try:
-        return service.execute_video_inference(
+        cfg = FrameSamplingConfig(
+            mode=payload.sampling_mode,
+            sample_interval=payload.custom_stride,
+        )
+        return service.run_video_tracking(
             video_id=payload.video_id,
             model_id=payload.model_id,
-            sampling_mode=payload.sampling_mode,
-            custom_stride=payload.custom_stride,
+            sampling_config=cfg,
         )
     except VideoValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -95,21 +168,23 @@ def create_video_run(payload: CreateVideoRunRequest) -> VideoInferenceRun:
     summary="List video inference tracking runs",
 )
 def list_video_runs(
+    video_id: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> list[VideoInferenceRun]:
-    """Retrieve paginated list of video inference runs."""
+    """List historical video inference tracking runs."""
     service = get_video_intelligence_service()
-    return service.list_runs(limit=limit, offset=offset)
+    runs = service.list_runs(video_id=video_id)
+    return runs[offset : offset + limit]
 
 
 @router.get(
     "/runs/{run_id}",
     response_model=VideoInferenceRun,
-    summary="Get single video run detail",
+    summary="Get single video tracking run record",
 )
 def get_video_run(run_id: str) -> VideoInferenceRun:
-    """Retrieve complete telemetry, tracks, and analytics for a video inference run."""
+    """Retrieve complete video run descriptor, tracks, and analytics."""
     service = get_video_intelligence_service()
     try:
         return service.get_run(run_id)
@@ -120,55 +195,95 @@ def get_video_run(run_id: str) -> VideoInferenceRun:
 @router.get(
     "/runs/{run_id}/tracks",
     response_model=list[Track],
-    summary="Query tracks for a video run",
+    summary="Get tracked objects for a video run",
 )
-def get_video_tracks(
+def get_run_tracks(
     run_id: str,
-    class_name: str | None = Query(default=None, description="Filter tracks by class name"),
-    min_duration_sec: float | None = Query(
-        default=None, ge=0.0, description="Minimum track duration"
-    ),
+    class_name: str | None = Query(default=None),
+    min_duration: float | None = Query(default=None),
 ) -> list[Track]:
-    """Retrieve persistent tracks for a video run with filtering."""
+    """Retrieve list of Track records identified in a video tracking run."""
     service = get_video_intelligence_service()
-    try:
-        run = service.get_run(run_id)
-        tracks = run.tracks
+    run = service.get_run(run_id)
+    tracks = run.tracks
+    if class_name:
+        tracks = [t for t in tracks if t.class_name.lower() == class_name.lower()]
+    if min_duration is not None:
+        tracks = [t for t in tracks if t.visibility_duration_sec >= min_duration]
+    return tracks
 
-        if class_name:
-            tracks = [t for t in tracks if t.class_name.lower() == class_name.lower()]
-        if min_duration_sec is not None:
-            tracks = [t for t in tracks if t.visibility_duration_sec >= min_duration_sec]
 
-        return tracks
-    except VideoRunNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+@router.get(
+    "/runs/{run_id}/tracks/{track_id}",
+    response_model=Track,
+    summary="Get single track detail and full trajectory",
+)
+def get_track_detail(run_id: str, track_id: int) -> Track:
+    """Retrieve specific track details, trajectory points, and region interactions."""
+    service = get_video_intelligence_service()
+    run = service.get_run(run_id)
+    for t in run.tracks:
+        if t.track_id == track_id:
+            return t
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"Track #{track_id} not found in run '{run_id}'.",
+    )
+
+
+@router.get(
+    "/runs/{run_id}/trajectories",
+    response_model=dict[str, list[TrajectoryPoint]],
+    summary="Get all trajectories for a video run",
+)
+def get_run_trajectories(run_id: str) -> dict[str, list[TrajectoryPoint]]:
+    """Retrieve mapping of track ID to chronological trajectory points."""
+    service = get_video_intelligence_service()
+    run = service.get_run(run_id)
+    return {str(t.track_id): t.trajectory for t in run.tracks}
 
 
 @router.get(
     "/runs/{run_id}/analytics",
     response_model=TemporalAnalytics,
-    summary="Get temporal analytics for a video run",
+    summary="Get temporal analytics telemetry",
 )
-def get_video_analytics(run_id: str) -> TemporalAnalytics:
-    """Retrieve temporal analytics time series and aggregate statistics."""
+def get_run_analytics(run_id: str) -> TemporalAnalytics:
+    """Retrieve aggregate temporal metrics, track duration distributions, and dwell times."""
     service = get_video_intelligence_service()
-    try:
-        run = service.get_run(run_id)
-        return run.analytics
-    except VideoRunNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    run = service.get_run(run_id)
+    return run.analytics
 
 
 @router.get(
     "/runs/{run_id}/export",
     summary="Export track trajectories as CSV",
 )
-def export_video_run_csv(run_id: str) -> dict[str, str]:
-    """Export all trajectory points for a video run in CSV format."""
+def export_run_csv(run_id: str) -> dict[str, Any]:
+    """Export all track trajectories for a video run as CSV text."""
+    service = get_video_intelligence_service()
+    run = service.get_run(run_id)
+    lines = [
+        "run_id,video_id,track_id,class_name,frame_index,timestamp_sec,x_center_px,y_center_px,width_px,height_px"
+    ]
+    for t in run.tracks:
+        for pt in t.trajectory:
+            lines.append(
+                f"{run.run_id},{run.video_id},{t.track_id},{t.class_name},{pt.frame_index},{pt.timestamp_sec},{pt.x_center_px},{pt.y_center_px},{pt.width_px},{pt.height_px}"
+            )
+    csv_text = "\n".join(lines)
+    return {"data": csv_text, "filename": f"{run_id}_trajectories.csv"}
+
+
+@router.post(
+    "/compare",
+    response_model=VideoComparisonResult,
+    summary="Compare two video analysis runs side-by-side",
+)
+def compare_videos(payload: CompareVideosRequest) -> VideoComparisonResult:
+    """Compare tracks, detections, and duration statistics between two video runs."""
     service = get_video_intelligence_service()
     try:
-        csv_data = service.export_run_csv(run_id)
-        return {"run_id": run_id, "format": "csv", "data": csv_data}
-    except VideoRunNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        return service.compare_videos(payload.video_a_id, payload.video_b_id)
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
