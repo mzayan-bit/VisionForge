@@ -99,6 +99,7 @@ class ExplainabilityService:
             model_version=req.model_version,
         )
 
+        req.config.method = req.method
         try:
             artifact, summary = generate_attribution_map(
                 model_id=req.model_id,

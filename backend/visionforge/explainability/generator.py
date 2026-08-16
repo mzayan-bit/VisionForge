@@ -63,15 +63,15 @@ def generate_attribution_map(
 
     # If incorrect prediction: shift peak attribution away from target object center to background
     if not is_correct:
-        cx_eff = min(0.90, max(0.10, cx + 0.35 * (1.0 if cx < 0.5 else -1.0)))
-        cy_eff = min(0.90, max(0.10, cy + 0.30 * (1.0 if cy < 0.5 else -1.0)))
-        sigma_x = bw * 1.2
-        sigma_y = bh * 1.2
+        cx_eff = min(0.95, max(0.05, cx + 0.45 * (1.0 if cx < 0.5 else -1.0)))
+        cy_eff = min(0.95, max(0.05, cy + 0.45 * (1.0 if cy < 0.5 else -1.0)))
+        sigma_x = max(0.06, bw * 0.3)
+        sigma_y = max(0.06, bh * 0.3)
     else:
         cx_eff = cx
         cy_eff = cy
-        sigma_x = max(0.08, bw * 0.6)
-        sigma_y = max(0.08, bh * 0.6)
+        sigma_x = max(0.04, bw * 0.25)
+        sigma_y = max(0.04, bh * 0.25)
 
     # 3. Generate 2D Gaussian Spatial Attribution Matrix
     grid: list[list[float]] = []
