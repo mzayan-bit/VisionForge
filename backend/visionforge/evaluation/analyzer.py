@@ -3,10 +3,10 @@
 Provides deep error taxonomy and evidence extraction:
 1. Missed Object (False Negative)
 2. False Positive (Background Detection)
-3. Wrong Class (Classification mismatch on matched spatial detection)
+3. Wrong Class (Misclassification on matched spatial detection)
 4. Poor Localization (0.10 <= IoU < matching threshold)
 5. Duplicate Detection (Redundant detection on already matched ground truth)
-6. Small Object Failure (Missed or false detection with bbox area < 32^2 pixels)
+6. Low Confidence (Filtered predictions below confidence threshold)
 """
 
 import logging
@@ -27,9 +27,12 @@ calculate_iou = calculate_iou_boxes
 
 
 def _compute_bbox_area(bbox: list[float] | None) -> float:
-    """Calculate pixel or relative area from bbox [x1, y1, x2, y2]."""
+    """Calculate pixel or relative area from bbox [x1, y1, x2, y2] or [xc, yc, w, h]."""
     if not bbox or len(bbox) < 4:
         return 0.0
+    # Check if xywh format
+    if bbox[2] < bbox[0] or bbox[3] < bbox[1]:
+        return bbox[2] * bbox[3]
     w = max(0.0, bbox[2] - bbox[0])
     h = max(0.0, bbox[3] - bbox[1])
     return w * h
@@ -38,7 +41,6 @@ def _compute_bbox_area(bbox: list[float] | None) -> float:
 def _categorize_object_size(bbox: list[float] | None) -> str:
     """Classify bounding box into small (<32^2), medium (32^2-96^2), or large (>96^2)."""
     area = _compute_bbox_area(bbox)
-    # If normalized coordinates (0..1), scale by standard 640x640 resolution
     if area <= 1.0:
         area = area * 640.0 * 640.0
     if area < 32.0 * 32.0:
@@ -53,10 +55,7 @@ def _calculate_review_priority(
     iou: float | None,
     error_type: ErrorCategory,
 ) -> float:
-    """Compute transparent review priority score in [0.0, 1.0].
-
-    Formula: 0.40 * (1 - confidence) + 0.35 * (1 - iou) + 0.25 * error_weight
-    """
+    """Compute transparent review priority score in [0.0, 1.0]."""
     conf = confidence if confidence is not None else 0.5
     iou_val = iou if iou is not None else 0.0
 
@@ -120,7 +119,7 @@ class ErrorAnalyzer:
             if best_iou >= self.config.iou_threshold and best_gt_idx >= 0:
                 gt = ground_truths[best_gt_idx]
                 if best_gt_idx in matched_gt:
-                    # Duplicate redundant detection on already matched ground truth
+                    # Duplicate redundant detection
                     size_cat = _categorize_object_size(pred.get("bbox"))
                     p_score = _calculate_review_priority(
                         pred.get("confidence"), best_iou, ErrorCategory.DUPLICATE_DETECTION
@@ -155,10 +154,10 @@ class ErrorAnalyzer:
                     matched_gt.add(best_gt_idx)
                     matched_pred.add(p_idx)
                 else:
-                    # Wrong Class (spatial match but incorrect category classification)
+                    # Misclassification / Wrong Class
                     size_cat = _categorize_object_size(pred.get("bbox"))
                     p_score = _calculate_review_priority(
-                        pred.get("confidence"), best_iou, ErrorCategory.WRONG_CLASS
+                        pred.get("confidence"), best_iou, ErrorCategory.MISCLASSIFICATION
                     )
                     errors.append(
                         FailureSampleDetail(
@@ -170,7 +169,7 @@ class ErrorAnalyzer:
                             predicted_class=pred.get("class_name"),
                             confidence=pred.get("confidence"),
                             iou=round(best_iou, 4),
-                            error_type=ErrorCategory.WRONG_CLASS,
+                            error_type=ErrorCategory.MISCLASSIFICATION,
                             model_id=model_id,
                             model_version=model_version,
                             dataset_id=dataset_id,
@@ -188,7 +187,7 @@ class ErrorAnalyzer:
                     matched_pred.add(p_idx)
 
             elif 0.10 <= best_iou < self.config.iou_threshold and best_gt_idx >= 0:
-                # Poor localization error (spatial overlap exists but sub-threshold IoU)
+                # Poor localization error
                 gt = ground_truths[best_gt_idx]
                 size_cat = _categorize_object_size(pred.get("bbox"))
                 p_score = _calculate_review_priority(
@@ -254,12 +253,7 @@ class ErrorAnalyzer:
         for gt_idx, gt in enumerate(ground_truths):
             if gt_idx not in matched_gt:
                 size_cat = _categorize_object_size(gt.get("bbox"))
-                err_type = (
-                    ErrorCategory.SMALL_OBJECT_FAILURE
-                    if size_cat == "small"
-                    else ErrorCategory.FALSE_NEGATIVE
-                )
-                p_score = _calculate_review_priority(0.0, 0.0, err_type)
+                p_score = _calculate_review_priority(0.0, 0.0, ErrorCategory.FALSE_NEGATIVE)
                 errors.append(
                     FailureSampleDetail(
                         sample_id=f"fail_{uuid.uuid4().hex[:8]}",
@@ -269,7 +263,7 @@ class ErrorAnalyzer:
                         ground_truth_class=gt.get("class_name"),
                         confidence=0.0,
                         iou=0.0,
-                        error_type=err_type,
+                        error_type=ErrorCategory.FALSE_NEGATIVE,
                         model_id=model_id,
                         model_version=model_version,
                         dataset_id=dataset_id,
@@ -282,5 +276,34 @@ class ErrorAnalyzer:
                         review_priority=p_score,
                     )
                 )
+
+        # 4. Low Confidence Detections (filtered out below threshold)
+        low_conf_preds = [
+            p for p in predictions if p.get("confidence", 1.0) < self.config.confidence_threshold
+        ]
+        for pred in low_conf_preds:
+            size_cat = _categorize_object_size(pred.get("bbox"))
+            errors.append(
+                FailureSampleDetail(
+                    sample_id=f"fail_{uuid.uuid4().hex[:8]}",
+                    eval_id=eval_id,
+                    image_id=image_id,
+                    image_path=image_path,
+                    predicted_class=pred.get("class_name"),
+                    confidence=pred.get("confidence"),
+                    iou=0.0,
+                    error_type=ErrorCategory.LOW_CONFIDENCE,
+                    model_id=model_id,
+                    model_version=model_version,
+                    dataset_id=dataset_id,
+                    dataset_version=dataset_version,
+                    split=split,
+                    object_size_category=size_cat,
+                    pred_bbox=pred.get("bbox"),
+                    nearby_ground_truths=ground_truths,
+                    competing_predictions=valid_preds,
+                    review_priority=0.2,
+                )
+            )
 
         return errors
