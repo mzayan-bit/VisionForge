@@ -37,6 +37,14 @@ import {
   Trash2,
   Video,
   Zap,
+  TrendingUp,
+  Box,
+  Split,
+  Maximize2,
+  RotateCcw,
+  Sparkle,
+  Target,
+  Share2,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
@@ -53,6 +61,16 @@ interface TrajectoryPoint {
   width_px: number;
   height_px: number;
   bbox: number[];
+  instantaneous_speed_px_s?: number;
+}
+
+interface RegionVisit {
+  region_id: string;
+  region_name: string;
+  entered_sec: number;
+  exited_sec?: number | null;
+  dwell_duration_sec: number;
+  visit_count: number;
 }
 
 interface Track {
@@ -68,6 +86,11 @@ interface Track {
   max_confidence: number;
   total_distance_px: number;
   avg_speed_px_per_sec: number;
+  image_space_velocity_px_s: number;
+  observation_count: number;
+  gap_count: number;
+  regions_visited?: RegionVisit[];
+  associated_events?: string[];
   status: string;
   trajectory: TrajectoryPoint[];
   detections_count: number;
@@ -79,8 +102,72 @@ interface TemporalAnalytics {
   avg_track_duration_sec: number;
   longest_track_duration_sec: number;
   avg_pixel_movement_px: number;
-  active_objects_over_time: { second: number; active_count: number }[];
-  detections_over_time: { second: number; detection_count: number }[];
+  total_region_visits?: number;
+  avg_dwell_time_sec?: number;
+  events_per_minute?: number;
+  active_objects_over_time: { second: number; count?: number; active_count?: number }[];
+  detections_over_time: { second: number; count?: number; detection_count?: number }[];
+}
+
+interface EventEvidence {
+  event_id: string;
+  frame_before_idx: number;
+  event_frame_idx: number;
+  frame_after_idx: number;
+  start_timestamp_sec: number;
+  representative_timestamp_sec: number;
+  end_timestamp_sec: number;
+  highlight_track_ids: number[];
+  highlight_region_id?: string | null;
+  trigger_rule: string;
+  snapshot_notes: string;
+}
+
+interface TemporalEvent {
+  event_id: string;
+  run_id: string;
+  video_id: string;
+  event_type: string;
+  start_timestamp_sec: number;
+  end_timestamp_sec: number;
+  duration_sec: number;
+  source_track_ids: number[];
+  source_frame_range: number[];
+  reliability: string;
+  event_params: Record<string, any>;
+  description: string;
+  trigger_rule?: string;
+  evidence?: EventEvidence | null;
+  created_at: string;
+}
+
+interface RegionOfInterest {
+  region_id: string;
+  video_id: string;
+  name: string;
+  shape_type: string;
+  coordinates: number[][];
+  coordinate_system: string;
+  color: string;
+  created_at: string;
+}
+
+interface VideoSession {
+  session_id: string;
+  video_id: string;
+  video_source: string;
+  duration_sec: number;
+  fps: number;
+  width: number;
+  height: number;
+  frame_count: number;
+  codec: string;
+  file_size_bytes: number;
+  model_version: string;
+  status: string;
+  video_fingerprint: string;
+  lineage: Record<string, any>;
+  created_at: string;
 }
 
 interface VideoInferenceRun {
@@ -106,878 +193,882 @@ interface VideoInferenceRun {
   tracking_latency_ms: number;
 }
 
-interface RegionOfInterest {
-  region_id: string;
-  video_id: string;
-  name: string;
-  shape_type: "RECTANGLE" | "POLYGON";
-  coordinates: number[][];
-  coordinate_system: "PIXEL" | "NORMALIZED";
-  color: string;
-}
-
-interface TemporalEvent {
-  event_id: string;
-  run_id: string;
-  video_id: string;
-  event_type: string;
-  start_timestamp_sec: number;
-  end_timestamp_sec: number;
-  duration_sec: number;
-  source_track_ids: number[];
-  source_frame_range: number[];
-  reliability: "HIGH" | "MEDIUM" | "LOW";
-  event_params: Record<string, any>;
-  description: string;
-}
-
-interface EventEvidence {
-  event_id: string;
-  frame_before_idx: number;
-  event_frame_idx: number;
-  frame_after_idx: number;
-  highlight_track_ids: number[];
-  highlight_region_id?: string;
-  snapshot_notes: string;
-}
-
-interface QueryEvidenceItem {
-  event_id?: string;
-  track_id?: number;
-  timestamp_sec: number;
-  frame_idx: number;
-  region_id?: string;
-  description: string;
-  action_link: string;
-}
-
-interface VisualQueryResult {
-  query_id: string;
-  original_query: string;
-  structured_query: Record<string, any>;
-  status: "SUCCESS" | "AMBIGUOUS" | "UNSUPPORTED" | "VALIDATION_ERROR";
-  result_type: string;
-  records: Record<string, any>[];
-  summary: string;
-  evidence: QueryEvidenceItem[];
-  interpretation_explanation: string;
-  interpretation_time_ms: number;
-  execution_time_ms: number;
-  total_query_time_ms: number;
-  source_run_id: string;
-  reproducibility_hash: string;
-  created_at: string;
-}
-
-interface QueryHistoryItem {
-  query_id: string;
-  original_query: string;
-  query_type: string;
-  run_id: string;
-  status: string;
-  results_count: number;
-  total_query_time_ms: number;
-  created_at: string;
-}
-
 export default function VideoLabPage() {
-  // Video Controls State
-  const [videoId, setVideoId] = useState<string>("sample_traffic_01");
-  const [modelId, setModelId] = useState<string>("yolo11s.pt");
-  const [trackerName, setTrackerName] = useState<string>("ByteTrack");
-  const [samplingMode, setSamplingMode] = useState<string>("EVERY_2ND_FRAME");
-
-  // Playback & Video Player State
-  const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [currentTimeSec, setCurrentTimeSec] = useState<number>(0.0);
-  const [playbackSpeed, setPlaybackSpeed] = useState<number>(1.0);
-
-  // Active Run & Selection State
-  const [currentRun, setCurrentRun] = useState<VideoInferenceRun | null>(null);
-  const [selectedTrackId, setSelectedTrackId] = useState<number | null>(null);
-  const [showTrajectory, setShowTrajectory] = useState<boolean>(true);
-  const [loading, setLoading] = useState<boolean>(false);
-
-  // Temporal Event Intelligence State
+  // ─── State ──────────────────────────────────────────────────────────
+  const [sessions, setSessions] = useState<VideoSession[]>([]);
+  const [selectedSession, setSelectedSession] = useState<VideoSession | null>(null);
+  const [runs, setRuns] = useState<VideoInferenceRun[]>([]);
+  const [selectedRun, setSelectedRun] = useState<VideoInferenceRun | null>(null);
   const [regions, setRegions] = useState<RegionOfInterest[]>([]);
   const [events, setEvents] = useState<TemporalEvent[]>([]);
-  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
-  const [inspectEvidenceModal, setInspectEvidenceModal] = useState<EventEvidence | null>(null);
-  const [eventFilterType, setEventFilterType] = useState<string>("ALL");
-  const [showAddRegionModal, setShowAddRegionModal] = useState<boolean>(false);
-  const [newRegionName, setNewRegionName] = useState<string>("Loading Zone A");
+  const [selectedTrack, setSelectedTrack] = useState<Track | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<TemporalEvent | null>(null);
 
-  // Visual Query Layer State
-  const [userQuestion, setUserQuestion] = useState<string>("");
-  const [queryResult, setQueryResult] = useState<VisualQueryResult | null>(null);
-  const [queryHistory, setQueryHistory] = useState<QueryHistoryItem[]>([]);
-  const [askingQuery, setAskingQuery] = useState<boolean>(false);
-  const [showQueryBuilderModal, setShowQueryBuilderModal] = useState<boolean>(false);
-  const [showHistoryDrawer, setShowHistoryDrawer] = useState<boolean>(false);
+  // Playback & Overlay State
+  const [currentTimeSec, setCurrentTimeSec] = useState<number>(0.0);
+  const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState<number>(1.0);
+  const [showBoxes, setShowBoxes] = useState<boolean>(true);
+  const [showTrackIds, setShowTrackIds] = useState<boolean>(true);
+  const [showTrajectories, setShowTrajectories] = useState<boolean>(true);
+  const [showRegions, setShowRegions] = useState<boolean>(true);
+  const [showEvents, setShowEvents] = useState<boolean>(true);
 
-  // Query Builder Form State
-  const [qbQueryType, setQbQueryType] = useState<string>("EVENT_SEARCH");
-  const [qbEventType, setQbEventType] = useState<string>("OBJECT_ENTERED_REGION");
-  const [qbClass, setQbClass] = useState<string>("person");
-  const [qbRegion, setQbRegion] = useState<string>("Loading Zone A");
-  const [qbMinDuration, setQbMinDuration] = useState<number>(3.0);
+  // Search & Query Layer
+  const [queryInput, setQueryInput] = useState<string>("");
+  const [queryResult, setQueryResult] = useState<any | null>(null);
+  const [isQuerying, setIsQuerying] = useState<boolean>(false);
+  const [activeTab, setActiveTab] = useState<"timeline" | "tracks" | "regions" | "query" | "lineage">("timeline");
 
+  // Region Creation Modal
+  const [isRegionModalOpen, setIsRegionModalOpen] = useState<boolean>(false);
+  const [newRegionName, setNewRegionName] = useState<string>("Corridor B");
+  const [newRegionColor, setNewRegionColor] = useState<string>("#3b82f6");
+
+  // Video Comparison Modal
+  const [isCompareModalOpen, setIsCompareModalOpen] = useState<boolean>(false);
+  const [compareResult, setCompareResult] = useState<any | null>(null);
+
+  // Initial Load
   useEffect(() => {
-    handleRunVideoInference();
+    fetchSessions();
+    fetchRuns();
   }, []);
 
-  // Timer loop for video playback simulation
+  const fetchSessions = async () => {
+    try {
+      const res = await fetch("http://localhost:8000/api/v1/video/sessions");
+      if (res.ok) {
+        const data = await res.json();
+        setSessions(data);
+        if (data.length > 0) setSelectedSession(data[0]);
+      }
+    } catch (e) {
+      console.warn("Using fallback sessions:", e);
+    }
+  };
+
+  const fetchRuns = async () => {
+    try {
+      const res = await fetch("http://localhost:8000/api/v1/video/runs");
+      if (res.ok) {
+        const data = await res.json();
+        setRuns(data);
+        if (data.length > 0) {
+          setSelectedRun(data[0]);
+          fetchRegions(data[0].video_id);
+          fetchEvents(data[0].run_id);
+        }
+      }
+    } catch (e) {
+      console.warn("Using fallback runs:", e);
+    }
+  };
+
+  const fetchRegions = async (videoId: string) => {
+    try {
+      const res = await fetch(`http://localhost:8000/api/v1/events/regions?video_id=${videoId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setRegions(data);
+      }
+    } catch (e) {
+      console.warn("Failed fetching regions:", e);
+    }
+  };
+
+  const fetchEvents = async (runId: string) => {
+    try {
+      const res = await fetch(`http://localhost:8000/api/v1/events/runs/${runId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setEvents(data);
+      }
+    } catch (e) {
+      console.warn("Failed fetching events:", e);
+    }
+  };
+
+  // Playback timer ticker
   useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (isPlaying && currentRun) {
+    let interval: any = null;
+    if (isPlaying && selectedRun) {
       interval = setInterval(() => {
         setCurrentTimeSec((prev) => {
           const next = prev + 0.1 * playbackSpeed;
-          if (next >= currentRun.duration_sec) {
+          if (next >= selectedRun.duration_sec) {
             setIsPlaying(false);
-            return 0;
+            return 0.0;
           }
-          return next;
+          return parseFloat(next.toFixed(2));
         });
       }, 100);
+    } else {
+      clearInterval(interval);
     }
     return () => clearInterval(interval);
-  }, [isPlaying, currentRun, playbackSpeed]);
+  }, [isPlaying, playbackSpeed, selectedRun]);
 
-  const handleRunVideoInference = async () => {
-    setLoading(true);
+  // Execute Natural Language Temporal Query
+  const handleExecuteQuery = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!queryInput.trim() || !selectedRun) return;
+
+    setIsQuerying(true);
     try {
-      const res = await fetch("/api/v1/video/runs", {
+      const res = await fetch("http://localhost:8000/api/v1/query/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          video_id: videoId,
-          model_id: modelId,
-          sampling_mode: samplingMode,
-          custom_stride: samplingMode === "EVERY_FRAME" ? 1 : samplingMode === "EVERY_5TH_FRAME" ? 5 : 2,
+          question: queryInput,
+          run_id: selectedRun.run_id,
         }),
       });
-
       if (res.ok) {
-        const data: VideoInferenceRun = await res.json();
-        setCurrentRun(data);
-        setCurrentTimeSec(0.0);
-        if (data.tracks.length > 0) {
-          setSelectedTrackId(data.tracks[0].track_id);
-        }
-
-        await fetchRegions(data.video_id);
-        await handleGenerateEvents(data.run_id);
-        await fetchQueryHistory();
+        const data = await res.json();
+        setQueryResult(data);
       }
     } catch (err) {
-      console.error("Failed to run video inference pipeline:", err);
+      console.error("Query failed:", err);
     } finally {
-      setLoading(false);
+      setIsQuerying(false);
     }
   };
 
-  const fetchRegions = async (vidId: string) => {
+  // Create Region ROI
+  const handleCreateRegion = async () => {
+    if (!selectedRun) return;
     try {
-      const res = await fetch(`/api/v1/events/regions?video_id=${vidId}`);
-      if (res.ok) {
-        const data: RegionOfInterest[] = await res.json();
-        setRegions(data);
-      }
-    } catch (err) {
-      console.error("Failed to fetch regions:", err);
-    }
-  };
-
-  const handleAddDefaultRegion = async () => {
-    if (!currentRun) return;
-    try {
-      const res = await fetch("/api/v1/events/regions", {
+      const res = await fetch("http://localhost:8000/api/v1/events/regions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          video_id: currentRun.video_id,
+          video_id: selectedRun.video_id,
           name: newRegionName,
           shape_type: "RECTANGLE",
           coordinates: [
-            [200.0, 150.0],
-            [1200.0, 700.0],
+            [200, 200],
+            [700, 700],
           ],
-          color: "#3b82f6",
+          color: newRegionColor,
         }),
       });
-
       if (res.ok) {
-        await fetchRegions(currentRun.video_id);
-        await handleGenerateEvents(currentRun.run_id);
-        setShowAddRegionModal(false);
+        setIsRegionModalOpen(false);
+        fetchRegions(selectedRun.video_id);
+        fetchEvents(selectedRun.run_id);
       }
     } catch (err) {
-      console.error("Failed to create region:", err);
+      console.error("Failed creating region:", err);
     }
   };
 
-  const handleDeleteRegion = async (regId: string) => {
+  // Compare Videos
+  const handleCompareVideos = async () => {
+    if (!runs || runs.length < 2) return;
     try {
-      await fetch(`/api/v1/events/regions/${regId}`, { method: "DELETE" });
-      if (currentRun) {
-        await fetchRegions(currentRun.video_id);
-        await handleGenerateEvents(currentRun.run_id);
-      }
-    } catch (err) {
-      console.error("Failed to delete region:", err);
-    }
-  };
-
-  const handleGenerateEvents = async (runId: string) => {
-    try {
-      const res = await fetch("/api/v1/events/generate", {
+      const res = await fetch("http://localhost:8000/api/v1/video/compare", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          run_id: runId,
-          config: {
-            dwell_threshold_sec: 3.0,
-            proximity_threshold_px: 100.0,
-          },
+          video_a_id: runs[0].video_id,
+          video_b_id: runs[1].video_id,
         }),
       });
-
       if (res.ok) {
-        const evts: TemporalEvent[] = await res.json();
-        setEvents(evts);
-        if (evts.length > 0) {
-          setSelectedEventId(evts[0].event_id);
-        }
+        const data = await res.json();
+        setCompareResult(data);
+        setIsCompareModalOpen(true);
       }
     } catch (err) {
-      console.error("Failed to generate temporal events:", err);
+      console.error("Comparison error:", err);
     }
   };
 
-  const handleAskQuery = async (queryStr?: string) => {
-    const textToSubmit = queryStr || userQuestion;
-    if (!textToSubmit || !currentRun) return;
-
-    setAskingQuery(true);
-    try {
-      const res = await fetch("/api/v1/query/ask", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          query_text: textToSubmit,
-          run_id: currentRun.run_id,
-        }),
-      });
-
-      if (res.ok) {
-        const result: VisualQueryResult = await res.json();
-        setQueryResult(result);
-        setUserQuestion(textToSubmit);
-        await fetchQueryHistory();
-
-        // If evidence exists, auto seek to first evidence item
-        if (result.evidence.length > 0) {
-          const ev = result.evidence[0];
-          setCurrentTimeSec(ev.timestamp_sec);
-          if (ev.track_id !== undefined) {
-            setSelectedTrackId(ev.track_id);
-          }
-        }
-      }
-    } catch (err) {
-      console.error("Failed to execute visual query:", err);
-    } finally {
-      setAskingQuery(false);
-    }
+  // Jump to specific timestamp
+  const seekTo = (sec: number) => {
+    setCurrentTimeSec(Math.max(0, Math.min(selectedRun?.duration_sec || 10, sec)));
   };
 
-  const handleRunStructuredQueryBuilder = async () => {
-    if (!currentRun) return;
-    setAskingQuery(true);
-    try {
-      const res = await fetch("/api/v1/query/execute", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          query: {
-            query_id: `vq_builder_${Date.now()}`,
-            run_id: currentRun.run_id,
-            query_type: qbQueryType,
-            event_type: qbEventType,
-            object_class: qbClass,
-            region_name: qbRegion,
-            min_duration_sec: qbMinDuration,
-            original_text: `Visual Query: ${qbEventType} in ${qbRegion}`,
-          },
-        }),
-      });
-
-      if (res.ok) {
-        const result: VisualQueryResult = await res.json();
-        setQueryResult(result);
-        setShowQueryBuilderModal(false);
-        await fetchQueryHistory();
-      }
-    } catch (err) {
-      console.error("Failed to run query builder:", err);
-    } finally {
-      setAskingQuery(false);
-    }
-  };
-
-  const fetchQueryHistory = async () => {
-    try {
-      const res = await fetch("/api/v1/query/history");
-      if (res.ok) {
-        const history: QueryHistoryItem[] = await res.json();
-        setQueryHistory(history);
-      }
-    } catch (err) {
-      console.error("Failed to fetch query history:", err);
-    }
-  };
-
-  const handleInspectEvidence = async (eventId: string) => {
-    try {
-      const res = await fetch(`/api/v1/events/${eventId}/evidence`);
-      if (res.ok) {
-        const evidence: EventEvidence = await res.json();
-        setInspectEvidenceModal(evidence);
-      }
-    } catch (err) {
-      console.error("Failed to fetch event evidence:", err);
-    }
-  };
-
-  const selectedTrack = currentRun?.tracks.find((t) => t.track_id === selectedTrackId);
-  const selectedEvent = events.find((e) => e.event_id === selectedEventId);
-
-  const activeTracksAtCurrentTime = currentRun?.tracks.filter(
-    (t) =>
-      currentTimeSec >= t.first_timestamp_sec && currentTimeSec <= t.last_timestamp_sec + 0.5
-  ) || [];
-
-  const filteredEvents = events.filter((e) => {
-    if (eventFilterType !== "ALL" && e.event_type !== eventFilterType) return false;
-    return true;
-  });
-
-  const SAMPLE_QUESTIONS = [
-    "Which objects entered Loading Zone A?",
-    "How many people were present at 5 seconds?",
-    "Which track stayed longest in Loading Zone A?",
-    "Show events involving Track 1.",
-    "Which objects became close?",
-    "Show dwell events longer than 3 seconds.",
-  ];
+  // Active tracks at current time
+  const activeTracksAtCurrentTime =
+    selectedRun?.tracks.filter(
+      (t) => currentTimeSec >= t.first_timestamp_sec && currentTimeSec <= t.last_timestamp_sec
+    ) || [];
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#0a0a0a] text-neutral-200 font-inter">
-      {/* Page Header */}
+    <div className="min-h-screen bg-slate-950 text-slate-100 p-6 space-y-6">
+      {/* Top Header */}
       <PageHeader
-        title="Video Lab & Ask VisionForge Query Layer"
-        description="Structured Computer Vision Query Layer: Natural Language Questions, Verified Visual Evidence & Query Builder"
-        breadcrumbs={["VisionForge", "Video Lab", "Ask VisionForge"]}
+        title="Video Understanding & Temporal Intelligence Lab"
+        description="Continuous visual trajectory tracking, rule-based temporal event extraction, spatial ROI zones, and natural language query evidence."
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <Button
-              variant="secondary"
-              icon={<History className="w-4 h-4 text-purple-400" />}
-              onClick={() => setShowHistoryDrawer(true)}
+              variant="outline"
+              className="border-slate-700 bg-slate-900/60 hover:bg-slate-800 text-slate-200"
+              onClick={handleCompareVideos}
             >
-              Query History ({queryHistory.length})
+              <Split className="w-4 h-4 mr-2 text-indigo-400" />
+              Compare Runs
             </Button>
 
             <Button
-              variant="secondary"
-              icon={<Sliders className="w-4 h-4 text-blue-400" />}
-              onClick={() => setShowQueryBuilderModal(true)}
+              variant="outline"
+              className="border-slate-700 bg-slate-900/60 hover:bg-slate-800 text-slate-200"
+              onClick={() => setIsRegionModalOpen(true)}
             >
-              Visual Query Builder
+              <MapPin className="w-4 h-4 mr-2 text-emerald-400" />
+              Define ROI Zone
             </Button>
 
-            <Button
-              variant="primary"
-              icon={<Video className="w-4 h-4" />}
-              onClick={handleRunVideoInference}
-              disabled={loading}
-            >
-              {loading ? "Processing..." : "Run Video Pipeline"}
-            </Button>
+            <Link href={`http://localhost:8000/api/v1/video/runs/${selectedRun?.run_id}/export`} target="_blank">
+              <Button variant="outline" className="border-slate-700 bg-slate-900/60 hover:bg-slate-800 text-slate-200">
+                <Download className="w-4 h-4 mr-2 text-sky-400" />
+                Export CSV
+              </Button>
+            </Link>
           </div>
         }
       />
 
-      <div className="p-6 space-y-6 flex-1">
-        {/* Ask VisionForge Natural Language Search Panel */}
-        <div className="bg-[#121212] border border-blue-500/30 rounded-xl p-5 space-y-4 shadow-xl">
-          <div className="flex justify-between items-center border-b border-white/10 pb-3">
-            <h3 className="text-sm font-semibold uppercase tracking-wider text-blue-400 flex items-center gap-2">
-              <MessageSquare className="w-4.5 h-4.5 text-blue-400" />
-              Ask VisionForge Visual Query Engine
-            </h3>
-            <span className="text-[10px] font-mono text-neutral-500 bg-[#1a1a1a] px-2 py-1 rounded border border-white/5">
-              Read-Only Security Guarantee | Evidence Backed
-            </span>
-          </div>
-
-          {/* Search Bar Input */}
-          <div className="flex items-center gap-3">
-            <div className="relative flex-1">
-              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-500" />
-              <input
-                type="text"
-                value={userQuestion}
-                onChange={(e) => setUserQuestion(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleAskQuery()}
-                placeholder="Ask a question (e.g. 'Which objects entered Loading Zone A?', 'How many people at 5 seconds?')"
-                className="w-full bg-[#181818] border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500 font-mono"
-              />
+      {/* Main Workspace Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Left / Center: Interactive Video Canvas & Controls (7 Cols) */}
+        <div className="lg:col-span-7 space-y-4">
+          {/* Video Player Canvas Card */}
+          <div className="bg-slate-900/70 border border-slate-800 rounded-xl overflow-hidden shadow-2xl backdrop-blur-sm">
+            <div className="p-4 border-b border-slate-800/80 flex items-center justify-between bg-slate-900/90">
+              <div className="flex items-center gap-3">
+                <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="font-semibold text-sm tracking-wide text-slate-200">
+                  {selectedSession?.video_source || "Security Stream #01"}
+                </span>
+                <span className="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-400 font-mono">
+                  {selectedSession?.width || 1920}x{selectedSession?.height || 1080} @ {selectedSession?.fps || 30} FPS
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-slate-400 font-mono">
+                <span>
+                  {currentTimeSec.toFixed(2)}s / {(selectedRun?.duration_sec || 10.0).toFixed(2)}s
+                </span>
+              </div>
             </div>
-            <Button
-              variant="primary"
-              icon={<Zap className="w-4 h-4" />}
-              onClick={() => handleAskQuery()}
-              disabled={askingQuery || !userQuestion}
-            >
-              {askingQuery ? "Analyzing..." : "Ask Question"}
-            </Button>
-          </div>
 
-          {/* Quick Question Chips */}
-          <div className="flex flex-wrap items-center gap-2 pt-1">
-            <span className="text-[10px] font-mono text-neutral-500 flex items-center gap-1">
-              <Sparkles className="w-3 h-3 text-amber-400" /> Quick Queries:
-            </span>
-            {SAMPLE_QUESTIONS.map((q, idx) => (
-              <button
-                key={idx}
-                onClick={() => handleAskQuery(q)}
-                className="text-[10px] font-mono px-2.5 py-1 rounded-full bg-[#1a1a1a] hover:bg-blue-600/20 text-neutral-300 hover:text-blue-300 border border-white/5 hover:border-blue-500/40 transition-all"
-              >
-                {q}
-              </button>
-            ))}
-          </div>
+            {/* Video Canvas Simulation Screen */}
+            <div className="relative aspect-video bg-slate-950 flex items-center justify-center overflow-hidden group select-none">
+              {/* Canvas Background Simulation */}
+              <div className="absolute inset-0 bg-gradient-to-br from-slate-900/60 via-slate-950 to-slate-900/80" />
+              <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#38bdf8_1px,transparent_1px)] [background-size:24px_24px]" />
 
-          {/* Interpreted Query & Result Display */}
-          {queryResult && (
-            <div className="mt-4 bg-[#161616] border border-white/10 rounded-xl p-4 space-y-3 font-mono text-xs">
-              <div className="flex flex-wrap justify-between items-center border-b border-white/10 pb-2 gap-2">
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                      queryResult.status === "SUCCESS"
-                        ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                        : queryResult.status === "AMBIGUOUS"
-                        ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
-                        : "bg-purple-500/20 text-purple-400 border border-purple-500/30"
-                    }`}
+              {/* Render Active ROI Zones */}
+              {showRegions &&
+                regions.map((reg) => (
+                  <div
+                    key={reg.region_id}
+                    className="absolute border-2 border-dashed rounded-lg bg-indigo-500/10 pointer-events-none transition-all duration-300"
+                    style={{
+                      left: `${(reg.coordinates[0][0] / 1920) * 100}%`,
+                      top: `${(reg.coordinates[0][1] / 1080) * 100}%`,
+                      width: `${((reg.coordinates[1][0] - reg.coordinates[0][0]) / 1920) * 100}%`,
+                      height: `${((reg.coordinates[1][1] - reg.coordinates[0][1]) / 1080) * 100}%`,
+                      borderColor: reg.color || "#3b82f6",
+                    }}
                   >
-                    STATUS: {queryResult.status}
-                  </span>
-                  <span className="text-neutral-400 text-[11px]">
-                    Query ID: {queryResult.query_id}
-                  </span>
-                </div>
-
-                <div className="text-[10px] text-neutral-500">
-                  Latency: {queryResult.total_query_time_ms}ms | Records: {queryResult.records.length}
-                </div>
-              </div>
-
-              {/* Interpretation Explanation Badge */}
-              <div className="bg-[#1c1c1c] p-2.5 rounded border border-white/5 text-blue-300 text-[11px]">
-                <span className="font-bold text-neutral-400">Interpreted Query DSL:</span>{" "}
-                {queryResult.interpretation_explanation}
-              </div>
-
-              {/* Natural Language Summary Answer */}
-              <div className="p-3 bg-blue-950/20 border border-blue-500/30 rounded-lg text-white font-bold text-xs leading-relaxed">
-                Answer: {queryResult.summary}
-              </div>
-
-              {/* Evidence Stream Cards */}
-              {queryResult.evidence.length > 0 && (
-                <div className="space-y-2 pt-2">
-                  <div className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider flex items-center gap-1.5">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                    Verified Visual Evidence ({queryResult.evidence.length} sources)
+                    <div
+                      className="absolute top-1 left-1 text-[10px] font-medium px-1.5 py-0.5 rounded text-white shadow-md backdrop-blur-md"
+                      style={{ backgroundColor: reg.color || "#3b82f6" }}
+                    >
+                      {reg.name}
+                    </div>
                   </div>
+                ))}
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                    {queryResult.evidence.map((ev, idx) => (
-                      <div
-                        key={idx}
-                        className="bg-[#1a1a1a] p-3 rounded-lg border border-white/5 space-y-2 hover:border-blue-500/40 transition-all"
-                      >
-                        <div className="flex justify-between items-center text-[10px]">
-                          <span className="text-blue-400 font-bold">t = {ev.timestamp_sec.toFixed(1)}s</span>
-                          {ev.track_id !== undefined && (
-                            <span className="text-purple-400 font-bold">Track #{ev.track_id}</span>
-                          )}
-                        </div>
+              {/* Render Active Tracks & Bounding Boxes */}
+              {activeTracksAtCurrentTime.map((track) => {
+                // Find closest trajectory point for current time
+                const point =
+                  track.trajectory.find((pt) => Math.abs(pt.timestamp_sec - currentTimeSec) < 0.2) ||
+                  track.trajectory[0];
 
-                        <p className="text-[10px] text-neutral-300 line-clamp-2 leading-relaxed">
-                          {ev.description}
-                        </p>
+                if (!point) return null;
 
-                        <button
-                          onClick={() => {
-                            setCurrentTimeSec(ev.timestamp_sec);
-                            if (ev.track_id !== undefined) setSelectedTrackId(ev.track_id);
-                          }}
-                          className="w-full text-center py-1 rounded bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 text-[10px] border border-blue-500/30 transition-all font-bold"
-                        >
-                          [ View Evidence at t={ev.timestamp_sec.toFixed(1)}s ]
-                        </button>
+                const leftPct = (point.bbox[0] / 1920) * 100;
+                const topPct = (point.bbox[1] / 1080) * 100;
+                const widthPct = ((point.bbox[2] - point.bbox[0]) / 1920) * 100;
+                const heightPct = ((point.bbox[3] - point.bbox[1]) / 1080) * 100;
+
+                const isSelected = selectedTrack?.track_id === track.track_id;
+
+                return (
+                  <div
+                    key={track.track_id}
+                    onClick={() => setSelectedTrack(track)}
+                    className={`absolute cursor-pointer transition-all duration-150 ${
+                      showBoxes ? "border-2 rounded" : ""
+                    } ${
+                      isSelected
+                        ? "border-amber-400 bg-amber-400/20 ring-2 ring-amber-400/50"
+                        : "border-sky-400 bg-sky-400/10 hover:border-sky-300"
+                    }`}
+                    style={{
+                      left: `${leftPct}%`,
+                      top: `${topPct}%`,
+                      width: `${widthPct}%`,
+                      height: `${heightPct}%`,
+                    }}
+                  >
+                    {showTrackIds && (
+                      <div className="absolute -top-6 left-0 bg-slate-900/90 text-sky-300 text-[11px] font-mono font-bold px-1.5 py-0.5 rounded shadow-lg border border-sky-500/40 flex items-center gap-1">
+                        <span>#{track.track_id}</span>
+                        <span className="text-slate-400 font-normal">({track.class_name})</span>
+                        <span className="text-emerald-400">{(track.avg_confidence * 100).toFixed(0)}%</span>
                       </div>
-                    ))}
+                    )}
                   </div>
+                );
+              })}
+
+              {/* Render Motion Trails / Trajectories */}
+              {showTrajectories && selectedTrack && (
+                <svg className="absolute inset-0 w-full h-full pointer-events-none">
+                  <polyline
+                    fill="none"
+                    stroke="#f59e0b"
+                    strokeWidth="3"
+                    strokeDasharray="4 2"
+                    points={selectedTrack.trajectory
+                      .map((pt) => `${(pt.x_center_px / 1920) * 100}%,${(pt.y_center_px / 1080) * 100}%`)
+                      .join(" ")}
+                  />
+                  {selectedTrack.trajectory.map((pt, i) => (
+                    <circle
+                      key={i}
+                      cx={`${(pt.x_center_px / 1920) * 100}%`}
+                      cy={`${(pt.y_center_px / 1080) * 100}%`}
+                      r="3"
+                      fill="#fbbf24"
+                    />
+                  ))}
+                </svg>
+              )}
+
+              {/* Empty state if video not active */}
+              {activeTracksAtCurrentTime.length === 0 && (
+                <div className="text-center text-slate-500 pointer-events-none">
+                  <Activity className="w-8 h-8 mx-auto mb-1 text-slate-600 animate-pulse" />
+                  <p className="text-xs">No active tracks at t={currentTimeSec.toFixed(2)}s</p>
                 </div>
               )}
             </div>
-          )}
-        </div>
 
-        {/* Video Player & Event Stream Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column: Video Player & Region Overlay */}
-          <div className="lg:col-span-2 space-y-6">
-            <div className="bg-[#121212] border border-white/10 rounded-xl overflow-hidden space-y-4 p-4">
-              <div className="flex justify-between items-center border-b border-white/10 pb-3">
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-neutral-400 flex items-center gap-2">
-                  <Video className="w-4 h-4 text-cyan-400" />
-                  Video Canvas with Region & Track Overlay
-                </h3>
-                <span className="text-xs text-neutral-500 font-mono">
-                  Timestamp: {currentTimeSec.toFixed(1)}s / {currentRun?.duration_sec.toFixed(1) || "10.0"}s
-                </span>
-              </div>
-
-              {/* Video Overlay Screen */}
-              <div className="relative aspect-video bg-[#080808] border border-white/10 rounded-lg overflow-hidden flex flex-col items-center justify-center">
-                <div className="absolute inset-0 bg-[radial-gradient(#1f1f1f_1px,transparent_1px)] [background-size:16px_16px] opacity-40" />
-
-                <svg className="absolute inset-0 w-full h-full pointer-events-none">
-                  {/* Region ROI Overlays */}
-                  {regions.map((reg) => (
-                    <g key={`reg_${reg.region_id}`}>
-                      <rect
-                        x={`${(reg.coordinates[0][0] / 1920) * 100}%`}
-                        y={`${(reg.coordinates[0][1] / 1080) * 100}%`}
-                        width={`${((reg.coordinates[1][0] - reg.coordinates[0][0]) / 1920) * 100}%`}
-                        height={`${((reg.coordinates[1][1] - reg.coordinates[0][1]) / 1080) * 100}%`}
-                        fill="rgba(59, 130, 246, 0.08)"
-                        stroke={reg.color}
-                        strokeWidth="2"
-                        strokeDasharray="6 3"
-                        rx="6"
-                      />
-                      <foreignObject
-                        x={`${(reg.coordinates[0][0] / 1920) * 100}%`}
-                        y={`${(reg.coordinates[0][1] / 1080) * 100 + 1}%`}
-                        width="160"
-                        height="24"
-                      >
-                        <div className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-blue-600/40 text-blue-300 border border-blue-500/40 w-fit">
-                          Region: {reg.name}
-                        </div>
-                      </foreignObject>
-                    </g>
-                  ))}
-
-                  {/* Selected Track Trajectory Line */}
-                  {showTrajectory && selectedTrack && (
-                    <polyline
-                      points={selectedTrack.trajectory
-                        .filter((pt) => pt.timestamp_sec <= currentTimeSec)
-                        .map((pt) => `${pt.norm_x * 100}% ${pt.norm_y * 100}%`)
-                        .join(", ")}
-                      fill="none"
-                      stroke="#3b82f6"
-                      strokeWidth="2.5"
-                      strokeDasharray="4 2"
-                    />
-                  )}
-
-                  {/* Active Track Bounding Boxes */}
-                  {activeTracksAtCurrentTime.map((track) => {
-                    const latestPt = track.trajectory.reduce(
-                      (prev, curr) => (curr.timestamp_sec <= currentTimeSec ? curr : prev),
-                      track.trajectory[0]
-                    );
-
-                    const isSelected = selectedTrackId === track.track_id;
-
-                    return (
-                      <g key={`t_overlay_${track.track_id}`}>
-                        <rect
-                          x={`${latestPt.bbox[0] / 19.2}%`}
-                          y={`${latestPt.bbox[1] / 10.8}%`}
-                          width={`${latestPt.width_px / 19.2}%`}
-                          height={`${latestPt.height_px / 10.8}%`}
-                          fill={isSelected ? "rgba(59, 130, 246, 0.25)" : "rgba(168, 85, 247, 0.15)"}
-                          stroke={isSelected ? "#3b82f6" : "#a855f7"}
-                          strokeWidth={isSelected ? "3" : "1.5"}
-                          rx="4"
-                        />
-                        <foreignObject
-                          x={`${latestPt.bbox[0] / 19.2}%`}
-                          y={`${latestPt.bbox[1] / 10.8 - 6}%`}
-                          width="140"
-                          height="24"
-                        >
-                          <div
-                            className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded shadow w-fit ${
-                              isSelected ? "bg-blue-600 text-white" : "bg-purple-600 text-white"
-                            }`}
-                          >
-                            Track #{track.track_id} ({track.class_name})
-                          </div>
-                        </foreignObject>
-                      </g>
-                    );
-                  })}
-                </svg>
-
-                <div className="z-10 text-center space-y-1">
-                  <div className="text-xs font-mono text-neutral-400">
-                    Video Stream ({currentRun?.processed_frames || 0} sampled frames)
-                  </div>
-                  <div className="text-[10px] text-neutral-500 font-mono">
-                    Active Regions: {regions.length} | Detected Events: {events.length}
-                  </div>
-                </div>
-              </div>
-
-              {/* Scrubber & Controls */}
-              <div className="space-y-3 pt-2">
+            {/* Playback Controls & Timeline Scrubber */}
+            <div className="p-4 bg-slate-900/90 border-t border-slate-800 space-y-3">
+              {/* Scrubber Bar */}
+              <div className="space-y-1">
                 <input
                   type="range"
-                  min={0}
-                  max={currentRun?.duration_sec || 10.0}
-                  step={0.1}
+                  min="0"
+                  max={selectedRun?.duration_sec || 10.0}
+                  step="0.05"
                   value={currentTimeSec}
-                  onChange={(e) => setCurrentTimeSec(parseFloat(e.target.value))}
-                  className="w-full h-1.5 bg-[#1f1f1f] rounded-lg appearance-none cursor-pointer accent-blue-500"
+                  onChange={(e) => seekTo(parseFloat(e.target.value))}
+                  className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-sky-500"
                 />
+                <div className="flex justify-between text-[11px] text-slate-500 font-mono">
+                  <span>0.00s</span>
+                  <span>{((selectedRun?.duration_sec || 10.0) / 2).toFixed(2)}s</span>
+                  <span>{(selectedRun?.duration_sec || 10.0).toFixed(2)}s</span>
+                </div>
+              </div>
 
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-2">
+              {/* Control Buttons */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 w-9 h-9 p-0"
+                    onClick={() => setIsPlaying(!isPlaying)}
+                  >
+                    {isPlaying ? <Pause className="w-4 h-4 text-amber-400" /> : <Play className="w-4 h-4 text-emerald-400" />}
+                  </Button>
+
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-slate-400 hover:text-slate-200 text-xs font-mono"
+                    onClick={() => seekTo(currentTimeSec - 1.0)}
+                  >
+                    -1s
+                  </Button>
+
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-slate-400 hover:text-slate-200 text-xs font-mono"
+                    onClick={() => seekTo(currentTimeSec + 1.0)}
+                  >
+                    +1s
+                  </Button>
+
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-slate-400 hover:text-slate-200 text-xs font-mono"
+                    onClick={() => seekTo(0)}
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+
+                {/* Speed selector */}
+                <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
+                  {[0.5, 1.0, 2.0].map((spd) => (
                     <button
-                      onClick={() => setIsPlaying(!isPlaying)}
-                      className="p-2 rounded-lg bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 border border-blue-500/30 transition-all"
+                      key={spd}
+                      onClick={() => setPlaybackSpeed(spd)}
+                      className={`text-xs px-2 py-0.5 rounded font-mono transition-colors ${
+                        playbackSpeed === spd ? "bg-sky-600 text-white font-bold" : "text-slate-400 hover:text-slate-200"
+                      }`}
                     >
-                      {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                      {spd}x
                     </button>
+                  ))}
+                </div>
 
-                    <div className="flex items-center gap-1 text-xs font-mono">
-                      {[0.5, 1.0, 2.0].map((s) => (
-                        <button
-                          key={s}
-                          onClick={() => setPlaybackSpeed(s)}
-                          className={`px-2 py-0.5 rounded border text-[10px] ${
-                            playbackSpeed === s
-                              ? "bg-blue-600/20 text-blue-400 border-blue-500/30"
-                              : "bg-[#181818] text-neutral-400 border-white/5"
-                          }`}
-                        >
-                          {s}x
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                {/* Overlay Toggle Buttons */}
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => setShowBoxes(!showBoxes)}
+                    className={`p-1.5 rounded text-xs flex items-center gap-1 border ${
+                      showBoxes ? "bg-sky-500/20 border-sky-500 text-sky-300" : "bg-slate-950 border-slate-800 text-slate-500"
+                    }`}
+                    title="Toggle Bounding Boxes"
+                  >
+                    <Box className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Boxes</span>
+                  </button>
 
-                  <div className="flex items-center gap-3 text-xs font-mono">
-                    <label className="flex items-center gap-1.5 cursor-pointer text-neutral-400">
-                      <input
-                        type="checkbox"
-                        checked={showTrajectory}
-                        onChange={(e) => setShowTrajectory(e.target.checked)}
-                        className="rounded accent-blue-500"
-                      />
-                      <span>Show Trajectories</span>
-                    </label>
+                  <button
+                    onClick={() => setShowTrajectories(!showTrajectories)}
+                    className={`p-1.5 rounded text-xs flex items-center gap-1 border ${
+                      showTrajectories
+                        ? "bg-amber-500/20 border-amber-500 text-amber-300"
+                        : "bg-slate-950 border-slate-800 text-slate-500"
+                    }`}
+                    title="Toggle Trajectories"
+                  >
+                    <TrendingUp className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Trails</span>
+                  </button>
 
-                    <span className="text-neutral-500">|</span>
-                    <span className="text-emerald-400 font-bold">
-                      {currentRun?.processing_fps || 0} FPS
-                    </span>
-                  </div>
+                  <button
+                    onClick={() => setShowRegions(!showRegions)}
+                    className={`p-1.5 rounded text-xs flex items-center gap-1 border ${
+                      showRegions ? "bg-emerald-500/20 border-emerald-500 text-emerald-300" : "bg-slate-950 border-slate-800 text-slate-500"
+                    }`}
+                    title="Toggle ROI Regions"
+                  >
+                    <MapPin className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Zones</span>
+                  </button>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Right Column: Event Timeline & Regions */}
-          <div className="space-y-6">
-            <div className="bg-[#121212] border border-white/10 rounded-xl overflow-hidden flex flex-col h-[560px]">
-              <div className="p-4 border-b border-white/10 flex justify-between items-center bg-[#161616] shrink-0">
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-neutral-400 flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-emerald-400" />
-                  Chronological Event Stream ({filteredEvents.length})
-                </h3>
+          {/* Ask VisionForge Temporal Query Bar */}
+          <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-4 shadow-xl backdrop-blur-sm">
+            <form onSubmit={handleExecuteQuery} className="flex gap-2">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Ask VisionForge (e.g. 'What objects entered Zone A?', 'Which person stayed longest?')..."
+                  value={queryInput}
+                  onChange={(e) => setQueryInput(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-lg text-sm text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-sky-500"
+                />
+              </div>
+              <Button type="submit" disabled={isQuerying} className="bg-sky-600 hover:bg-sky-500 text-white text-xs px-4">
+                {isQuerying ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Sparkle className="w-4 h-4 mr-1" />}
+                Query
+              </Button>
+            </form>
+
+            {/* Query Results Preview */}
+            {queryResult && (
+              <div className="mt-3 p-3 rounded-lg bg-slate-950 border border-slate-800/80 space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400 font-mono">DSL: {queryResult.structured_query?.query_type}</span>
+                  <span
+                    className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                      queryResult.status === "SUCCESS" ? "bg-emerald-500/20 text-emerald-300" : "bg-amber-500/20 text-amber-300"
+                    }`}
+                  >
+                    {queryResult.status}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-200 font-medium">{queryResult.explanation}</p>
+
+                {queryResult.evidence_items && queryResult.evidence_items.length > 0 && (
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {queryResult.evidence_items.map((item: any, i: number) => (
+                      <button
+                        key={i}
+                        onClick={() => seekTo(item.timestamp_sec)}
+                        className="text-[11px] px-2 py-1 bg-slate-900 border border-slate-800 hover:border-sky-500 rounded text-sky-400 font-mono flex items-center gap-1"
+                      >
+                        <Clock className="w-3 h-3" />
+                        Jump to t={item.timestamp_sec.toFixed(1)}s
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Right: Tabbed Intelligence Panel (5 Cols) */}
+        <div className="lg:col-span-5 space-y-4">
+          {/* Navigation Tabs */}
+          <div className="flex border-b border-slate-800 bg-slate-900/80 rounded-t-xl p-1 gap-1">
+            {[
+              { id: "timeline", label: "Event Stream", icon: History },
+              { id: "tracks", label: "Tracks & Replay", icon: Activity },
+              { id: "regions", label: "ROI Zones", icon: MapPin },
+              { id: "lineage", label: "Lineage", icon: ShieldCheck },
+            ].map((tab) => {
+              const Icon = tab.icon;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id as any)}
+                  className={`flex-1 py-2 text-xs font-medium rounded-lg flex items-center justify-center gap-1.5 transition-colors ${
+                    activeTab === tab.id
+                      ? "bg-slate-800 text-sky-400 font-semibold shadow"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Tab 1: Event Stream */}
+          {activeTab === "timeline" && (
+            <div className="bg-slate-900/70 border border-slate-800 rounded-b-xl p-4 space-y-3 max-h-[600px] overflow-y-auto">
+              <div className="flex items-center justify-between text-xs text-slate-400 pb-2 border-b border-slate-800">
+                <span>Detected Observable Events ({events.length})</span>
+                <span className="text-[10px] text-slate-500 font-mono">Sorted Chronologically</span>
               </div>
 
-              <div className="p-3 space-y-2 overflow-y-auto flex-1 font-mono text-xs">
-                {filteredEvents.map((evt) => {
-                  const isSelected = selectedEventId === evt.event_id;
+              {events.map((evt) => (
+                <div
+                  key={evt.event_id}
+                  onClick={() => {
+                    setSelectedEvent(evt);
+                    seekTo(evt.start_timestamp_sec);
+                  }}
+                  className={`p-3 rounded-lg border transition-all cursor-pointer ${
+                    selectedEvent?.event_id === evt.event_id
+                      ? "bg-sky-950/40 border-sky-500 ring-1 ring-sky-500/40"
+                      : "bg-slate-950 border-slate-800/80 hover:border-slate-700"
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-900 text-sky-400 border border-slate-800">
+                      {evt.event_type}
+                    </span>
+                    <span className="text-[11px] font-mono text-slate-400 flex items-center gap-1">
+                      <Clock className="w-3 h-3 text-slate-500" />
+                      t={evt.start_timestamp_sec.toFixed(1)}s
+                      {evt.duration_sec > 0 && ` (${evt.duration_sec.toFixed(1)}s)`}
+                    </span>
+                  </div>
 
-                  return (
-                    <div
-                      key={evt.event_id}
-                      onClick={() => {
-                        setSelectedEventId(evt.event_id);
-                        setCurrentTimeSec(evt.start_timestamp_sec);
-                        if (evt.source_track_ids.length > 0) {
-                          setSelectedTrackId(evt.source_track_ids[0]);
-                        }
+                  <p className="text-xs text-slate-200 mb-2">{evt.description}</p>
+
+                  {/* Trigger Rule Pill */}
+                  {evt.trigger_rule && (
+                    <div className="text-[11px] text-slate-400 bg-slate-900/80 p-1.5 rounded border border-slate-800 font-mono">
+                      <span className="text-amber-400 font-semibold">Trigger Basis: </span>
+                      {evt.trigger_rule}
+                    </div>
+                  )}
+
+                  {/* Deep link actions */}
+                  <div className="mt-2 pt-2 border-t border-slate-800/60 flex items-center justify-between text-[11px]">
+                    <span className="text-slate-500 font-mono">Tracks: #{evt.source_track_ids.join(", #")}</span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        seekTo(evt.start_timestamp_sec);
                       }}
-                      className={`p-3 rounded-lg border cursor-pointer transition-all space-y-1.5 ${
-                        isSelected
-                          ? "bg-blue-600/20 border-blue-500/50 text-white"
-                          : "bg-[#181818] border-white/5 hover:border-white/20 text-neutral-400"
-                      }`}
+                      className="text-sky-400 hover:text-sky-300 font-medium flex items-center gap-1"
                     >
-                      <div className="flex justify-between items-center">
-                        <span className="text-[11px] font-bold text-blue-400">
-                          t={evt.start_timestamp_sec.toFixed(1)}s
-                        </span>
-                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-300">
-                          {evt.event_type}
+                      Jump to Frame <ArrowRight className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Tab 2: Track Inspector & Replay */}
+          {activeTab === "tracks" && (
+            <div className="bg-slate-900/70 border border-slate-800 rounded-b-xl p-4 space-y-3 max-h-[600px] overflow-y-auto">
+              <div className="text-xs text-slate-400 pb-2 border-b border-slate-800">
+                Tracked Object Lifecycles ({selectedRun?.tracks.length || 0})
+              </div>
+
+              {selectedRun?.tracks.map((track) => {
+                const isSelected = selectedTrack?.track_id === track.track_id;
+                return (
+                  <div
+                    key={track.track_id}
+                    onClick={() => {
+                      setSelectedTrack(track);
+                      seekTo(track.first_timestamp_sec);
+                    }}
+                    className={`p-3 rounded-lg border transition-all cursor-pointer ${
+                      isSelected
+                        ? "bg-amber-950/30 border-amber-500 ring-1 ring-amber-500/40"
+                        : "bg-slate-950 border-slate-800/80 hover:border-slate-700"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold text-xs text-amber-400">Track #{track.track_id}</span>
+                        <span className="text-xs px-2 py-0.5 bg-slate-900 rounded text-slate-300 border border-slate-800">
+                          {track.class_name}
                         </span>
                       </div>
-                      <p className="text-[11px] text-neutral-300 line-clamp-2 leading-relaxed">
-                        {evt.description}
-                      </p>
+                      <span className="text-xs text-emerald-400 font-mono">
+                        {(track.avg_confidence * 100).toFixed(0)}% conf
+                      </span>
                     </div>
-                  );
-                })}
+
+                    {/* Measurable Telemetry Grid */}
+                    <div className="grid grid-cols-2 gap-2 text-[11px] font-mono text-slate-400 bg-slate-900/60 p-2 rounded border border-slate-800/60">
+                      <div>
+                        <span className="text-slate-500">Duration: </span>
+                        {track.visibility_duration_sec.toFixed(1)}s
+                      </div>
+                      <div>
+                        <span className="text-slate-500">Displacement: </span>
+                        {track.total_distance_px.toFixed(0)}px
+                      </div>
+                      <div>
+                        <span className="text-slate-500">Velocity: </span>
+                        {track.image_space_velocity_px_s.toFixed(1)} px/s
+                      </div>
+                      <div>
+                        <span className="text-slate-500">Observations: </span>
+                        {track.observation_count || track.detections_count} frames
+                      </div>
+                    </div>
+
+                    {/* Visited Regions */}
+                    {track.regions_visited && track.regions_visited.length > 0 && (
+                      <div className="mt-2 text-[11px] text-slate-400">
+                        <span className="text-slate-500">Zones Entered: </span>
+                        {track.regions_visited.map((rv, i) => (
+                          <span key={i} className="inline-block px-1.5 py-0.5 bg-slate-900 text-sky-300 rounded mr-1">
+                            {rv.region_name} ({rv.dwell_duration_sec.toFixed(1)}s)
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Cross-System Deep Links */}
+                    <div className="mt-3 pt-2 border-t border-slate-800 flex items-center justify-between text-[11px]">
+                      <Link
+                        href={`/visual-search?query=track_${track.track_id}`}
+                        className="text-slate-400 hover:text-sky-400"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        [Find Similar]
+                      </Link>
+                      <Link
+                        href={`/explainability?track_id=${track.track_id}`}
+                        className="text-slate-400 hover:text-amber-400"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        [Explain]
+                      </Link>
+                      <Link
+                        href={`/evaluation?focus_track=${track.track_id}`}
+                        className="text-slate-400 hover:text-emerald-400"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        [View Failure]
+                      </Link>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Tab 3: Regions of Interest (ROI) */}
+          {activeTab === "regions" && (
+            <div className="bg-slate-900/70 border border-slate-800 rounded-b-xl p-4 space-y-3 max-h-[600px] overflow-y-auto">
+              <div className="flex items-center justify-between text-xs text-slate-400 pb-2 border-b border-slate-800">
+                <span>Configured Spatial ROIs ({regions.length})</span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-sky-400 hover:text-sky-300 text-xs p-0 h-auto"
+                  onClick={() => setIsRegionModalOpen(true)}
+                >
+                  + Add Zone
+                </Button>
+              </div>
+
+              {regions.map((reg) => (
+                <div key={reg.region_id} className="p-3 rounded-lg bg-slate-950 border border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: reg.color || "#3b82f6" }} />
+                      <span className="text-xs font-semibold text-slate-200">{reg.name}</span>
+                    </div>
+                    <span className="text-[10px] font-mono text-slate-500">{reg.shape_type}</span>
+                  </div>
+
+                  <div className="text-[11px] font-mono text-slate-400 bg-slate-900/80 p-2 rounded border border-slate-800">
+                    <div>Coordinates: [{reg.coordinates.map((c) => `[${c.join(",")}]`).join(", ")}]</div>
+                    <div>Reference: {reg.coordinate_system} Coordinate Space</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Tab 4: Session Lineage & Reproducibility */}
+          {activeTab === "lineage" && (
+            <div className="bg-slate-900/70 border border-slate-800 rounded-b-xl p-4 space-y-3 max-h-[600px] overflow-y-auto">
+              <div className="text-xs text-slate-400 pb-2 border-b border-slate-800">
+                Lineage & Execution Provenance
+              </div>
+
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 space-y-2 text-xs font-mono">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Session ID:</span>
+                  <span className="text-slate-300">{selectedSession?.session_id || "vses_default"}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Model Checkpoint:</span>
+                  <span className="text-sky-400">{selectedRun?.model_id || "yolo11s.pt"}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Tracker Algorithm:</span>
+                  <span className="text-amber-400">{selectedRun?.tracker_name || "ByteTrack (IoU)"}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Processing FPS:</span>
+                  <span className="text-emerald-400">{selectedRun?.processing_fps || 30.0} FPS</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Inference Latency:</span>
+                  <span className="text-slate-300">{selectedRun?.inference_latency_ms || 12.5} ms</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Cryptographic Hash:</span>
+                  <span className="text-slate-400 text-[10px]">{selectedSession?.video_fingerprint || "sha256_verified"}</span>
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
 
-      {/* Visual Query Builder Modal */}
-      {showQueryBuilderModal && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-          <div className="bg-[#121212] border border-white/10 rounded-xl p-6 max-w-lg w-full space-y-4 font-mono text-xs">
-            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-              <Sliders className="w-4 h-4 text-blue-400" />
-              Visual Query Builder (Structured DSL)
+      {/* Define ROI Modal */}
+      {isRegionModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl max-w-md w-full p-5 space-y-4 shadow-2xl">
+            <h3 className="text-base font-semibold text-slate-100 flex items-center gap-2">
+              <MapPin className="w-5 h-5 text-emerald-400" />
+              Define Region of Interest (ROI)
             </h3>
 
-            <div className="space-y-3">
+            <div className="space-y-3 text-xs">
               <div>
-                <label className="text-neutral-400 block mb-1">Query Type</label>
-                <select
-                  value={qbQueryType}
-                  onChange={(e) => setQbQueryType(e.target.value)}
-                  className="w-full bg-[#1a1a1a] border border-white/10 rounded px-3 py-2 text-white"
-                >
-                  <option value="EVENT_SEARCH">EVENT_SEARCH</option>
-                  <option value="TRACK_SEARCH">TRACK_SEARCH</option>
-                  <option value="OBJECT_COUNT">OBJECT_COUNT</option>
-                  <option value="TRACK_AGGREGATION">TRACK_AGGREGATION</option>
-                </select>
+                <label className="block text-slate-400 mb-1">Region Name</label>
+                <input
+                  type="text"
+                  value={newRegionName}
+                  onChange={(e) => setNewRegionName(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded text-slate-200"
+                />
               </div>
 
               <div>
-                <label className="text-neutral-400 block mb-1">Event Type</label>
-                <select
-                  value={qbEventType}
-                  onChange={(e) => setQbEventType(e.target.value)}
-                  className="w-full bg-[#1a1a1a] border border-white/10 rounded px-3 py-2 text-white"
-                >
-                  <option value="OBJECT_ENTERED_REGION">OBJECT_ENTERED_REGION</option>
-                  <option value="OBJECT_LEFT_REGION">OBJECT_LEFT_REGION</option>
-                  <option value="OBJECT_DWELLED">OBJECT_DWELLED</option>
-                  <option value="OBJECT_STOPPED">OBJECT_STOPPED</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="text-neutral-400 block mb-1">Object Class</label>
-                <select
-                  value={qbClass}
-                  onChange={(e) => setQbClass(e.target.value)}
-                  className="w-full bg-[#1a1a1a] border border-white/10 rounded px-3 py-2 text-white"
-                >
-                  <option value="person">person</option>
-                  <option value="car">car</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="text-neutral-400 block mb-1">Target Region</label>
-                <select
-                  value={qbRegion}
-                  onChange={(e) => setQbRegion(e.target.value)}
-                  className="w-full bg-[#1a1a1a] border border-white/10 rounded px-3 py-2 text-white"
-                >
-                  {regions.map((r) => (
-                    <option key={r.region_id} value={r.name}>
-                      {r.name}
-                    </option>
-                  ))}
-                </select>
+                <label className="block text-slate-400 mb-1">Stroke Color</label>
+                <input
+                  type="color"
+                  value={newRegionColor}
+                  onChange={(e) => setNewRegionColor(e.target.value)}
+                  className="w-full h-8 bg-slate-950 border border-slate-800 rounded cursor-pointer"
+                />
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 pt-3">
-              <Button variant="secondary" size="sm" onClick={() => setShowQueryBuilderModal(false)}>
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
+              <Button variant="ghost" size="sm" onClick={() => setIsRegionModalOpen(false)}>
                 Cancel
               </Button>
-              <Button variant="primary" size="sm" onClick={handleRunStructuredQueryBuilder}>
-                Run Structured Query
+              <Button size="sm" className="bg-emerald-600 hover:bg-emerald-500 text-white" onClick={handleCreateRegion}>
+                Save Region
               </Button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Query History Drawer */}
-      {showHistoryDrawer && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-end">
-          <div className="bg-[#121212] border-l border-white/10 w-full max-w-md h-full p-6 space-y-4 font-mono text-xs overflow-y-auto">
-            <div className="flex justify-between items-center border-b border-white/10 pb-3">
-              <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                <History className="w-4 h-4 text-purple-400" />
-                Query Execution History
-              </h3>
-              <button onClick={() => setShowHistoryDrawer(false)} className="text-neutral-400 hover:text-white">
-                ✕
-              </button>
+      {/* Video Comparison Modal */}
+      {isCompareModalOpen && compareResult && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl max-w-lg w-full p-5 space-y-4 shadow-2xl">
+            <h3 className="text-base font-semibold text-slate-100 flex items-center gap-2">
+              <Split className="w-5 h-5 text-indigo-400" />
+              Side-by-Side Video Intelligence Comparison
+            </h3>
+
+            <div className="space-y-2 text-xs font-mono bg-slate-950 p-3 rounded-lg border border-slate-800">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Track Count Delta:</span>
+                <span className={compareResult.track_count_delta >= 0 ? "text-emerald-400" : "text-amber-400"}>
+                  {compareResult.track_count_delta > 0 ? `+${compareResult.track_count_delta}` : compareResult.track_count_delta} tracks
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Average Dwell Delta:</span>
+                <span className="text-slate-200">{compareResult.avg_dwell_delta_sec}s</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Event Volume Delta:</span>
+                <span className="text-slate-200">{compareResult.event_count_delta} observations</span>
+              </div>
             </div>
 
-            <div className="space-y-2">
-              {queryHistory.map((item) => (
-                <div
-                  key={item.query_id}
-                  className="p-3 bg-[#181818] border border-white/5 rounded-lg space-y-1.5 hover:border-purple-500/40 transition-all"
-                >
-                  <div className="flex justify-between items-center">
-                    <span className="text-purple-400 font-bold">{item.query_type}</span>
-                    <span className="text-[10px] text-neutral-500">{item.total_query_time_ms}ms</span>
-                  </div>
-                  <p className="text-white font-semibold text-xs">{item.original_query}</p>
-                  <div className="flex justify-between items-center pt-1 text-[10px] text-neutral-500">
-                    <span>Records: {item.results_count}</span>
-                    <button
-                      onClick={() => {
-                        setShowHistoryDrawer(false);
-                        handleAskQuery(item.original_query);
-                      }}
-                      className="text-blue-400 hover:underline"
-                    >
-                      Re-run Query
-                    </button>
-                  </div>
-                </div>
-              ))}
+            <div className="space-y-1">
+              <span className="text-xs font-semibold text-slate-300">Summary Findings:</span>
+              <ul className="text-xs text-slate-400 list-disc list-inside space-y-1">
+                {compareResult.summary_findings.map((f: string, i: number) => (
+                  <li key={i}>{f}</li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-slate-800">
+              <Button size="sm" variant="ghost" onClick={() => setIsCompareModalOpen(false)}>
+                Close
+              </Button>
             </div>
           </div>
         </div>
