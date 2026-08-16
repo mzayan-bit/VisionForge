@@ -17,6 +17,7 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
+  GitBranch,
 } from "lucide-react";
 
 export interface SidebarProps {
@@ -29,6 +30,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggleCollapse })
 
   const navItems = [
     { label: "Home", href: "/", icon: <Home className="w-4 h-4" /> },
+    { label: "Pipeline Studio", href: "/pipeline", icon: <GitBranch className="w-4 h-4 text-rose-400" /> },
     { label: "Workspace", href: "/workspace", icon: <Layout className="w-4 h-4" /> },
     { label: "Models", href: "/models", icon: <Cpu className="w-4 h-4" /> },
     { label: "Embeddings", href: "/embeddings", icon: <Fingerprint className="w-4 h-4 text-blue-400" /> },
