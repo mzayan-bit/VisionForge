@@ -372,24 +372,37 @@ class ActiveLearningService:
         return items
 
     def compare_strategies(
-        self, req: StrategyComparisonRequest
+        self,
+        req: StrategyComparisonRequest | None = None,
+        dataset_id: str | None = None,
+        model_id: str = "yolo11s.pt",
+        strategy_a: SelectionStrategy = SelectionStrategy.UNCERTAINTY,
+        strategy_b: SelectionStrategy = SelectionStrategy.DIVERSITY,
+        top_k: int = 25,
+        candidate_pool_id: str = "pool_01",
     ) -> StrategyComparisonResult:
         """Compare candidate coverage and overlap between two selection strategies."""
-        candidates = self._build_synthetic_candidate_pool(req.dataset_id, pool_size=req.top_k * 4)
+        ds_id = req.dataset_id if req else (dataset_id or "safety_v2")
+        m_id = req.model_id if req else model_id
+        strat_a = req.strategy_a if req else strategy_a
+        strat_b = req.strategy_b if req else strategy_b
+        k = req.top_k if req else top_k
+
+        candidates = self._build_synthetic_candidate_pool(ds_id, pool_size=k * 4)
 
         ranked_a = rank_candidate_samples(
             candidate_data=candidates,
             dataset_matrix=None,
-            strategy=req.strategy_a,
+            strategy=strat_a,
             weights=SignalWeights(),
-            top_k=req.top_k,
+            top_k=k,
         )
         ranked_b = rank_candidate_samples(
             candidate_data=candidates,
             dataset_matrix=None,
-            strategy=req.strategy_b,
+            strategy=strat_b,
             weights=SignalWeights(),
-            top_k=req.top_k,
+            top_k=k,
         )
 
         set_a = {s.image_id for s in ranked_a}
@@ -400,16 +413,16 @@ class ActiveLearningService:
         uniq_b = len(set_b - set_a)
 
         return StrategyComparisonResult(
-            dataset_id=req.dataset_id,
-            model_id=req.model_id,
-            strategy_a=req.strategy_a,
-            strategy_b=req.strategy_b,
+            dataset_id=ds_id,
+            model_id=m_id,
+            strategy_a=strat_a,
+            strategy_b=strat_b,
             overlap_count=overlap,
             unique_a_count=uniq_a,
             unique_b_count=uniq_b,
             diversity_delta=0.34,
             uncertainty_delta=0.18,
-            summary_notes=f"Strategy '{req.strategy_a.value}' and '{req.strategy_b.value}' have {overlap}/{req.top_k} overlapping candidates.",
+            summary_notes=f"Strategy '{strat_a.value}' and '{strat_b.value}' have {overlap}/{k} overlapping candidates.",
         )
 
     # ─── Closed-Loop Retraining Iterations (Backward Compatibility) ────
