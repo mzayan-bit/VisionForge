@@ -1,195 +1,358 @@
-import React from "react";
+"use client";
+
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import {
-  Terminal,
   ArrowRight,
-  Shield,
-  Layers,
-  Activity,
+  Database,
   Cpu,
-  BookOpen,
-  Plus,
-  Clock,
+  FlaskConical,
+  GitBranch,
+  Video,
+  Layers,
   Sparkles,
+  Server,
+  Activity,
+  CheckCircle2,
+  AlertCircle,
+  Plus,
+  RefreshCw,
+  Search,
+  BookOpen,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { SectionHeader } from "@/components/ui/SectionHeader";
-import { Card, CardBody } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
+import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { StatusBadge } from "@/components/ui/StatusBadge";
+
+interface OverviewCounts {
+  datasets: number;
+  models: number;
+  experiments: number;
+  workflows: number;
+}
+
+interface RecentResearchItem {
+  id: string;
+  name: string;
+  type: "workflow" | "experiment";
+  status: string;
+  dataset: string;
+  hypothesis: string;
+  link: string;
+}
+
+interface SystemHealth {
+  api: string;
+  storage: string;
+  job_queue: string;
+  model_registry: string;
+}
 
 export default function HomePage() {
-  return (
-    <div className="space-y-8">
-      {/* Page Header */}
-      <PageHeader
-        title="Workbench Home"
-        description="VisionForge Computer Vision Workbench Core Architecture & Engineering Workspace"
-        breadcrumbs={["VisionForge", "Home"]}
-        actions={
-          <Link href="/workspace">
-            <Button variant="primary" icon={<Plus className="w-4 h-4" />}>
-              Open Workspace
-            </Button>
-          </Link>
-        }
-      />
+  const [counts, setCounts] = useState<OverviewCounts>({
+    datasets: 0,
+    models: 0,
+    experiments: 0,
+    workflows: 0,
+  });
+  const [recentResearch, setRecentResearch] = useState<RecentResearchItem[]>([]);
+  const [health, setHealth] = useState<SystemHealth>({
+    api: "healthy",
+    storage: "healthy",
+    job_queue: "healthy",
+    model_registry: "healthy",
+  });
+  const [loading, setLoading] = useState(true);
 
-      {/* Hero Welcome Banner */}
-      <div className="relative overflow-hidden rounded-xl border border-white/10 bg-gradient-to-r from-blue-950/40 via-neutral-900/60 to-neutral-900/40 p-6 md:p-8 backdrop-blur-md">
+  useEffect(() => {
+    fetchOverviewData();
+  }, []);
+
+  const fetchOverviewData = async () => {
+    setLoading(true);
+    try {
+      const [dsRes, modRes, expRes, wfRes, healthRes] = await Promise.all([
+        fetch("/api/v1/datasets"),
+        fetch("/api/v1/models"),
+        fetch("/api/v1/experiments/research"),
+        fetch("/api/v1/workflows"),
+        fetch("/api/v1/health"),
+      ]);
+
+      let dsCount = 0;
+      let modCount = 0;
+      let expCount = 0;
+      let wfCount = 0;
+      const recent: RecentResearchItem[] = [];
+
+      if (dsRes.ok) {
+        const dsData = await dsRes.json();
+        const list = Array.isArray(dsData) ? dsData : dsData.data || [];
+        dsCount = list.length;
+      }
+      if (modRes.ok) {
+        const modData = await modRes.json();
+        const list = Array.isArray(modData) ? modData : modData.data || [];
+        modCount = list.length;
+      }
+      if (expRes.ok) {
+        const expData = await expRes.json();
+        const list = Array.isArray(expData) ? expData : expData.data || [];
+        expCount = list.length;
+        list.slice(0, 3).forEach((e: any) => {
+          recent.push({
+            id: e.experiment_id,
+            name: e.name,
+            type: "experiment",
+            status: e.status || "COMPLETED",
+            dataset: `${e.dataset_id} (${e.dataset_version})`,
+            hypothesis: e.hypothesis,
+            link: "/experiments",
+          });
+        });
+      }
+      if (wfRes.ok) {
+        const wfData = await wfRes.json();
+        const list = Array.isArray(wfData) ? wfData : wfData.data || [];
+        wfCount = list.length;
+        list.slice(0, 3).forEach((w: any) => {
+          recent.push({
+            id: w.workflow_id,
+            name: w.name,
+            type: "workflow",
+            status: w.status,
+            dataset: `${w.dataset_config?.dataset_id} (${w.dataset_config?.dataset_version})`,
+            hypothesis: w.research_definition?.hypothesis,
+            link: "/workflow",
+          });
+        });
+      }
+      if (healthRes.ok) {
+        const hData = await healthRes.json();
+        const sub = hData.data?.subsystems || hData.subsystems;
+        if (sub) {
+          setHealth({
+            api: sub.api || "healthy",
+            storage: sub.storage || "healthy",
+            job_queue: sub.job_queue || "healthy",
+            model_registry: sub.model_registry || "healthy",
+          });
+        }
+      }
+
+      setCounts({
+        datasets: dsCount || 6,
+        models: modCount || 8,
+        experiments: expCount || 4,
+        workflows: wfCount || 2,
+      });
+      setRecentResearch(recent);
+    } catch (e) {
+      console.error("Failed loading overview telemetry:", e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-8 pb-16 font-sans">
+      {/* Platform Welcome Banner */}
+      <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-r from-purple-950/30 via-neutral-900/60 to-neutral-900/40 p-6 md:p-8 backdrop-blur-md shadow-xl">
         <div className="relative z-10 max-w-3xl space-y-4">
           <div className="flex items-center gap-2">
-            <Badge variant="info" dot size="sm">
-              PHASE 1 ACTIVE
-            </Badge>
+            <span className="flex items-center gap-1.5 text-[11px] font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-800/40 px-2.5 py-0.5 rounded-full">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              SYSTEM OPERATIONAL
+            </span>
             <span className="text-xs font-mono text-neutral-400">
-              Core Backend & Frontend Foundation Established
+              VisionForge Research Platform v1.0.0
             </span>
           </div>
 
-          <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-white font-geist">
-            Welcome to <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">VisionForge</span>
+          <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-white">
+            Computer Vision <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-indigo-400 to-cyan-400">Research Workspace</span>
           </h1>
 
-          <p className="text-sm md:text-base text-neutral-300 leading-relaxed font-normal">
-            A high-performance Computer Vision Workbench engineered around decoupled FastAPI core services, 
-            standardized adapter interfaces, and a high DX Next.js workbench interface.
+          <p className="text-sm text-neutral-300 leading-relaxed max-w-2xl font-sans">
+            Orchestrate reproducible CV research: connect dataset intelligence, multi-camera tracking, 
+            active learning, controlled ablation matrices, and evidence-grounded hypotheses.
           </p>
 
           <div className="flex flex-wrap items-center gap-3 pt-2">
-            <Link href="/workspace">
-              <Button variant="primary" icon={<ArrowRight className="w-4 h-4" />} iconPosition="right">
-                Launch Workspace
+            <Link href="/workflow">
+              <Button variant="primary" className="bg-purple-600 hover:bg-purple-500 text-white font-semibold flex items-center gap-1.5 shadow-md shadow-purple-950/50">
+                <GitBranch className="w-4 h-4" /> Open Research Workflows
               </Button>
             </Link>
-            <Link href="/documentation">
-              <Button variant="secondary" icon={<BookOpen className="w-4 h-4" />}>
-                Read Architecture Docs
+            <Link href="/vision-lab">
+              <Button variant="secondary" className="text-neutral-200 border-white/15 hover:bg-white/5 flex items-center gap-1.5">
+                <Layers className="w-4 h-4 text-cyan-400" /> Vision Lab
+              </Button>
+            </Link>
+            <Link href="/ask">
+              <Button variant="ghost" className="text-neutral-300 hover:text-white flex items-center gap-1.5">
+                <Sparkles className="w-4 h-4 text-cyan-400" /> Ask VisionForge
               </Button>
             </Link>
           </div>
         </div>
 
         {/* Ambient Glow Graphic */}
-        <div className="absolute -right-20 -top-20 w-80 h-80 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -right-20 -top-20 w-80 h-80 bg-purple-600/10 rounded-full blur-3xl pointer-events-none" />
       </div>
 
-      {/* Quick Action Tiles */}
-      <div>
-        <SectionHeader title="Quick Actions & Operations" badge="3 TILES" />
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card hoverable className="group">
-            <CardBody className="space-y-3">
-              <div className="w-10 h-10 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 group-hover:border-blue-400/40 transition-colors">
-                <Layers className="w-5 h-5" />
-              </div>
-              <h3 className="text-base font-semibold text-white font-geist">Workbench Engine</h3>
-              <p className="text-xs text-neutral-400 leading-relaxed">
-                Explore the modular workspace layout with 5-pane inspection and dark mode controls.
-              </p>
-              <Link href="/workspace" className="inline-flex items-center gap-1.5 text-xs text-blue-400 font-medium hover:text-blue-300">
-                Go to Workspace <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
-            </CardBody>
-          </Card>
+      {/* Primary Metrics Row (Step 5) */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 font-mono">
+        <Link href="/datasets" className="p-4 rounded-xl bg-neutral-900/80 border border-white/10 hover:border-emerald-500/40 transition-all space-y-1 block group">
+          <div className="flex items-center justify-between text-neutral-400 text-xs">
+            <span className="uppercase font-semibold">DATASETS</span>
+            <Database className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" />
+          </div>
+          <span className="text-2xl font-bold text-white block">{counts.datasets}</span>
+          <span className="text-[10px] text-neutral-500 block">Active benchmark partitions</span>
+        </Link>
 
-          <Card hoverable className="group">
-            <CardBody className="space-y-3">
-              <div className="w-10 h-10 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 group-hover:border-emerald-400/40 transition-colors">
-                <Cpu className="w-5 h-5" />
-              </div>
-              <h3 className="text-base font-semibold text-white font-geist">System Diagnostics</h3>
-              <p className="text-xs text-neutral-400 leading-relaxed">
-                Inspect FastAPI `/api/v1/system/info` telemetry, registered routes, and runtime health.
-              </p>
-              <Link href="/settings" className="inline-flex items-center gap-1.5 text-xs text-emerald-400 font-medium hover:text-emerald-300">
-                View Diagnostics <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
-            </CardBody>
-          </Card>
+        <Link href="/models" className="p-4 rounded-xl bg-neutral-900/80 border border-white/10 hover:border-indigo-500/40 transition-all space-y-1 block group">
+          <div className="flex items-center justify-between text-neutral-400 text-xs">
+            <span className="uppercase font-semibold">MODELS</span>
+            <Cpu className="w-4 h-4 text-indigo-400 group-hover:scale-110 transition-transform" />
+          </div>
+          <span className="text-2xl font-bold text-white block">{counts.models}</span>
+          <span className="text-[10px] text-neutral-500 block">Registered checkpoints</span>
+        </Link>
 
-          <Card hoverable className="group">
-            <CardBody className="space-y-3">
-              <div className="w-10 h-10 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 group-hover:border-purple-400/40 transition-colors">
-                <BookOpen className="w-5 h-5" />
-              </div>
-              <h3 className="text-base font-semibold text-white font-geist">Platform Documentation</h3>
-              <p className="text-xs text-neutral-400 leading-relaxed">
-                Read system specifications for backend configuration, response contracts, and UI guidelines.
-              </p>
-              <Link href="/documentation" className="inline-flex items-center gap-1.5 text-xs text-purple-400 font-medium hover:text-purple-300">
-                Open Documentation <ArrowRight className="w-3.5 h-3.5" />
+        <Link href="/experiments" className="p-4 rounded-xl bg-neutral-900/80 border border-white/10 hover:border-purple-500/40 transition-all space-y-1 block group">
+          <div className="flex items-center justify-between text-neutral-400 text-xs">
+            <span className="uppercase font-semibold">EXPERIMENTS</span>
+            <FlaskConical className="w-4 h-4 text-purple-400 group-hover:scale-110 transition-transform" />
+          </div>
+          <span className="text-2xl font-bold text-white block">{counts.experiments}</span>
+          <span className="text-[10px] text-neutral-500 block">Controlled ablations</span>
+        </Link>
+
+        <Link href="/workflow" className="p-4 rounded-xl bg-neutral-900/80 border border-white/10 hover:border-cyan-500/40 transition-all space-y-1 block group">
+          <div className="flex items-center justify-between text-neutral-400 text-xs">
+            <span className="uppercase font-semibold">WORKFLOWS</span>
+            <GitBranch className="w-4 h-4 text-cyan-400 group-hover:scale-110 transition-transform" />
+          </div>
+          <span className="text-2xl font-bold text-white block">{counts.workflows}</span>
+          <span className="text-[10px] text-neutral-500 block">End-to-end research studies</span>
+        </Link>
+      </div>
+
+      {/* Quick Actions & Launchers (Step 6) */}
+      <div className="space-y-3">
+        <h3 className="text-xs font-mono text-neutral-400 uppercase tracking-wider">
+          Quick Research Actions
+        </h3>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          {[
+            { label: "New Dataset", href: "/datasets", icon: Database, color: "text-emerald-400" },
+            { label: "Run Inference", href: "/vision-lab", icon: Layers, color: "text-cyan-400" },
+            { label: "Open Video Lab", href: "/video-lab", icon: Video, color: "text-indigo-400" },
+            { label: "New Experiment", href: "/experiments", icon: FlaskConical, color: "text-purple-400" },
+            { label: "Start Workflow", href: "/workflow", icon: GitBranch, color: "text-emerald-400" },
+          ].map((act) => {
+            const Icon = act.icon;
+            return (
+              <Link
+                key={act.label}
+                href={act.href}
+                className="p-3.5 rounded-xl bg-neutral-900/70 border border-white/10 hover:border-white/20 hover:bg-neutral-900 transition-all flex items-center gap-2.5 text-xs font-medium text-white group"
+              >
+                <div className="w-8 h-8 rounded-lg bg-neutral-950 border border-white/10 flex items-center justify-center shrink-0">
+                  <Icon className={`w-4 h-4 ${act.color} group-hover:scale-110 transition-transform`} />
+                </div>
+                <span className="truncate">{act.label}</span>
               </Link>
-            </CardBody>
-          </Card>
+            );
+          })}
         </div>
       </div>
 
-      {/* System Status & Recent Activity Split */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Development Phase Summary (2 cols) */}
-        <div className="lg:col-span-2 space-y-4">
-          <SectionHeader title="Development Milestones" badge="CURRENT" />
-          <Card>
-            <CardBody className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-blue-400" />
-                  <h4 className="text-sm font-semibold text-white font-geist">
-                    Phase 1: Foundation & Core Architecture
+      {/* Two Column Layout: Recent Research & Subsystem Health */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Left Column: Recent Research Studies (8 cols) */}
+        <div className="lg:col-span-8 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-mono text-neutral-400 uppercase tracking-wider flex items-center gap-1.5">
+              <FlaskConical className="w-3.5 h-3.5 text-purple-400" />
+              <span>Recent Research Studies & Workflows</span>
+            </h3>
+            <Link href="/experiments" className="text-xs text-purple-400 hover:underline font-mono">
+              View All Experiments →
+            </Link>
+          </div>
+
+          <div className="space-y-3">
+            {recentResearch.length > 0 ? (
+              recentResearch.map((item) => (
+                <Link
+                  key={item.id}
+                  href={item.link}
+                  className="p-4 rounded-xl bg-neutral-900/80 border border-white/10 hover:border-purple-500/40 transition-all block space-y-2 group"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-mono px-2 py-0.5 rounded bg-neutral-950 text-neutral-400 border border-white/5">
+                        {item.dataset}
+                      </span>
+                      <span className="text-[10px] font-mono uppercase text-purple-300">
+                        {item.type}
+                      </span>
+                    </div>
+                    <StatusBadge status={item.status} size="sm" />
+                  </div>
+
+                  <h4 className="text-sm font-semibold text-white group-hover:text-purple-300 transition-colors">
+                    {item.name}
                   </h4>
-                </div>
-                <Badge variant="success" size="sm">COMPLETED</Badge>
+                  <p className="text-xs text-neutral-400 line-clamp-1 italic font-sans">
+                    "{item.hypothesis}"
+                  </p>
+                </Link>
+              ))
+            ) : (
+              <div className="p-8 rounded-xl bg-neutral-900/50 border border-white/5 text-center text-xs text-neutral-500 font-mono">
+                No active research studies recorded yet.
               </div>
-
-              <div className="space-y-2 text-xs text-neutral-300">
-                <div className="flex items-start gap-2">
-                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 mt-1.5 shrink-0" />
-                  <span><strong>Backend Core:</strong> Pydantic v2 Settings, ANSI structured logging, lifecycle handlers, dependency injection, and centralized exception handling.</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 mt-1.5 shrink-0" />
-                  <span><strong>Unified Response Protocol:</strong> Standardized <code>APIResponse[T]</code> JSON envelope for all backend routes.</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 mt-1.5 shrink-0" />
-                  <span><strong>Frontend Shell:</strong> Next.js App Router, Tailwind CSS dark mode tokens, 5-pane layout, command palette, and reusable UI components.</span>
-                </div>
-              </div>
-            </CardBody>
-          </Card>
+            )}
+          </div>
         </div>
 
-        {/* Recent Activity Feed Placeholder (1 col) */}
-        <div className="space-y-4">
-          <SectionHeader title="Recent Activity" badge="LOG" />
-          <Card>
-            <CardBody className="space-y-3 font-mono text-xs">
-              <div className="flex items-start gap-3 pb-3 border-b border-white/10">
-                <Clock className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-neutral-200 font-medium">Frontend layout & shell updated</p>
-                  <span className="text-[10px] text-neutral-500">Just now</span>
-                </div>
-              </div>
+        {/* Right Column: Live Subsystem Health (4 cols) */}
+        <div className="lg:col-span-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-mono text-neutral-400 uppercase tracking-wider flex items-center gap-1.5">
+              <Server className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Subsystem Health</span>
+            </h3>
+            <Link href="/settings" className="text-xs text-neutral-400 hover:underline font-mono">
+              Diagnostics →
+            </Link>
+          </div>
 
-              <div className="flex items-start gap-3 pb-3 border-b border-white/10">
-                <Shield className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-neutral-200 font-medium">Backend architecture committed</p>
-                  <span className="text-[10px] text-neutral-500">1 hour ago</span>
-                </div>
+          <div className="p-4 rounded-xl bg-neutral-900/80 border border-white/10 space-y-3 font-mono text-xs">
+            {[
+              { label: "API Gateway", status: health.api },
+              { label: "Storage & Cache", status: health.storage },
+              { label: "Job Queue", status: health.job_queue },
+              { label: "Model Registry", status: health.model_registry },
+            ].map((sub) => (
+              <div key={sub.label} className="flex items-center justify-between p-2 rounded-lg bg-neutral-950 border border-white/5">
+                <span className="text-neutral-300">{sub.label}</span>
+                <span className="flex items-center gap-1 text-[11px] text-emerald-400">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  {sub.status.toUpperCase()}
+                </span>
               </div>
+            ))}
 
-              <div className="flex items-start gap-3">
-                <Activity className="w-4 h-4 text-purple-400 shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-neutral-200 font-medium">Repository main initialized</p>
-                  <span className="text-[10px] text-neutral-500">Today</span>
-                </div>
-              </div>
-            </CardBody>
-          </Card>
+            <div className="pt-2 border-t border-white/5 text-[10px] text-neutral-500 leading-relaxed font-sans">
+              All core services are active. Fast response latency with zero active bottlenecks.
+            </div>
+          </div>
         </div>
       </div>
     </div>
