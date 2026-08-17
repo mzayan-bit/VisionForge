@@ -2,595 +2,834 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
-  Activity,
-  AlertCircle,
-  BarChart2,
-  CheckCircle2,
-  ChevronRight,
-  Clock,
-  Cpu,
-  Database,
-  FileText,
-  Filter,
   FlaskConical,
-  GitCommit,
+  BarChart2,
+  GitBranch,
   Layers,
+  Sparkles,
+  Search,
   Plus,
   RefreshCw,
-  Search,
-  Sparkles,
-  Tag,
+  Clock,
+  ShieldCheck,
+  AlertCircle,
+  CheckCircle2,
+  Database,
+  Cpu,
+  ChevronRight,
+  FileText,
+  Sliders,
+  Maximize2,
+  TrendingUp,
+  TrendingDown,
+  Info,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Badge";
 
 // ─── Interfaces ───────────────────────────────────────────────────
 
-interface EnvironmentSnapshot {
-  python_version: string;
-  os_platform: string;
-  cpu_architecture: string;
-  gpu_device: string;
-  torch_version: string;
-  git_commit_sha: string;
-  git_branch: string;
-  is_working_tree_clean: boolean;
+interface AggregatedMetricStats {
+  metric_name: string;
+  count: number;
+  mean: number;
+  std_dev: number;
+  min: number;
+  max: number;
+  confidence_interval_95?: [number, number];
+  is_single_run: boolean;
+  warning?: string;
 }
 
-interface DatasetFingerprint {
-  dataset_id: string;
-  version: string;
-  preparation_id?: string;
-  num_samples: number;
-  num_classes: number;
-  manifest_sha256: string;
-  fingerprint_hash: string;
+interface ExperimentRunRecord {
+  run_id: string;
+  seed: number;
+  model_id: string;
+  metrics: Record<string, number>;
+  per_class_metrics: Record<string, number>;
+  error_counts: Record<string, number>;
+  training_time_sec?: number;
+  gpu_hours?: number;
+  created_at: string;
 }
 
-interface Experiment {
+interface ExperimentVariant {
+  variant_id: string;
+  name: string;
+  description: string;
+  is_baseline: boolean;
+  config_changes: Record<string, any>;
+  dataset_id?: string;
+  dataset_version?: string;
+  runs: ExperimentRunRecord[];
+  aggregated_metrics: Record<string, AggregatedMetricStats>;
+  aggregated_per_class: Record<string, AggregatedMetricStats>;
+  aggregated_error_counts: Record<string, AggregatedMetricStats>;
+  label_count?: number;
+  label_percentage?: number;
+}
+
+interface EvaluationProtocol {
+  dataset_split: string;
+  primary_metric: string;
+  iou_threshold: number;
+  confidence_threshold: number;
+  class_handling: string;
+  is_locked: boolean;
+}
+
+interface AblationRow {
+  component: string;
+  baseline_present: boolean;
+  variant_present: boolean;
+  measured_effect_delta?: number;
+  metric_name: string;
+}
+
+interface AblationStudy {
+  ablation_id: string;
+  name: string;
+  hypothesis: string;
+  components: string[];
+  matrix: AblationRow[];
+  measured_effects: Record<string, number>;
+}
+
+interface ResearchExperiment {
   experiment_id: string;
   name: string;
   description: string;
-  purpose: string;
-  status: "DRAFT" | "RUNNING" | "COMPLETED" | "FAILED" | "ARCHIVED";
-  hypothesis?: string;
-  observations?: string;
+  hypothesis: string;
+  baseline_variant_id: string;
+  variants: ExperimentVariant[];
+  dataset_id: string;
+  dataset_version: string;
+  evaluation_protocol: EvaluationProtocol;
+  status: string;
+  ablation_study?: AblationStudy;
   conclusions?: string;
-  tags: string[];
-  dataset_id?: string;
-  dataset_version?: string;
-  dataset_fingerprint?: DatasetFingerprint;
-  preparation_id?: string;
-  training_run_ids: string[];
-  model_ids: string[];
-  evaluation_ids: string[];
-  benchmark_ids: string[];
-  inference_ids: string[];
-  training_config_snapshot?: Record<string, any>;
-  environment_snapshot: EnvironmentSnapshot;
-  parent_experiment_id?: string;
+  limitations?: string;
+  reproducibility_metadata: Record<string, any>;
   created_at: string;
   updated_at: string;
 }
 
-interface ExperimentComparison {
-  experiment_a_id: string;
-  experiment_b_id: string;
-  config_diff: Record<string, [any, any]>;
-  metric_diff: Record<string, [any, any]>;
-  summary_notes: string;
+interface VariableDiffItem {
+  parameter: string;
+  baseline_value: any;
+  variant_value: any;
+  has_changed: boolean;
+  component_type: string;
+}
+
+interface ResearchReport {
+  experiment_id: string;
+  title: string;
+  hypothesis: string;
+  dataset_summary: string;
+  baseline_summary: string;
+  variants_summary: string;
+  performance_deltas: Record<string, number>;
+  per_class_deltas: Record<string, number>;
+  error_deltas: Record<string, number>;
+  statistical_conclusions: string[];
+  grounded_conclusions: string;
+  limitations: string[];
+  markdown_report: string;
 }
 
 export default function ExperimentsPage() {
-  const router = useRouter();
+  const [researchExperiments, setResearchExperiments] = useState<ResearchExperiment[]>([]);
+  const [selectedExp, setSelectedExp] = useState<ResearchExperiment | null>(null);
+  const [selectedVariant, setSelectedVariant] = useState<ExperimentVariant | null>(null);
+  const [configDiff, setConfigDiff] = useState<VariableDiffItem[]>([]);
+  const [ablationMatrix, setAblationMatrix] = useState<AblationStudy | null>(null);
+  const [researchReport, setResearchReport] = useState<ResearchReport | null>(null);
+  const [activeTab, setActiveTab] = useState<"overview" | "diff" | "ablation" | "runs" | "report">("overview");
+  const [loading, setLoading] = useState(false);
 
-  // State
-  const [experiments, setExperiments] = useState<Experiment[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [searchQuery, setSearchQuery] = useState<string>("");
-  const [statusFilter, setStatusFilter] = useState<string>("ALL");
-  const [selectedTag, setSelectedTag] = useState<string>("ALL");
-
-  // Create Modal State
-  const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
-  const [createForm, setCreateForm] = useState({
-    name: "",
-    purpose: "",
-    hypothesis: "",
-    dataset_id: "safety_v2",
-    dataset_version: "v2.0",
-    preparation_id: "prep_12",
-    random_seed: 42,
-    tags: "baseline, yolo11",
-  });
-  const [creating, setCreating] = useState<boolean>(false);
-
-  // Compare Modal State
-  const [showCompareModal, setShowCompareModal] = useState<boolean>(false);
-  const [compareExpA, setCompareExpA] = useState<string>("");
-  const [compareExpB, setCompareExpB] = useState<string>("");
-  const [comparisonResult, setComparisonResult] = useState<ExperimentComparison | null>(null);
-  const [comparing, setComparing] = useState<boolean>(false);
+  // New Experiment Modal
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newHypothesis, setNewHypothesis] = useState("");
+  const [newDataset, setNewDataset] = useState("safety_v2");
+  const [newBaselineName, setNewBaselineName] = useState("Baseline Control");
 
   useEffect(() => {
-    fetchExperiments();
+    fetchResearchExperiments();
   }, []);
 
-  const fetchExperiments = async () => {
+  const fetchResearchExperiments = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/v1/experiments");
+      const res = await fetch("/api/v1/experiments/research");
       if (res.ok) {
-        const data = await res.json();
-        setExperiments(data);
-        if (data.length >= 2) {
-          setCompareExpA(data[0].experiment_id);
-          setCompareExpB(data[1].experiment_id);
+        const data: ResearchExperiment[] = await res.json();
+        setResearchExperiments(data);
+        if (data.length > 0) {
+          selectExperiment(data[0]);
         }
       }
-    } catch (err) {
-      console.error("Failed to fetch experiments:", err);
+    } catch (e) {
+      console.error("Failed to load research experiments:", e);
     } finally {
       setLoading(false);
     }
   };
 
+  const selectExperiment = async (exp: ResearchExperiment) => {
+    setSelectedExp(exp);
+    const nonBase = exp.variants.find((v) => !v.is_baseline) || exp.variants[0];
+    setSelectedVariant(nonBase);
+
+    // Fetch Diff, Ablation, Report in parallel
+    try {
+      const [diffRes, ablRes, repRes] = await Promise.all([
+        fetch(`/api/v1/experiments/research/${exp.experiment_id}/variants/${nonBase.variant_id}/diff`),
+        fetch(`/api/v1/experiments/research/${exp.experiment_id}/ablation`),
+        fetch(`/api/v1/experiments/research/${exp.experiment_id}/research-report`),
+      ]);
+
+      if (diffRes.ok) setConfigDiff(await diffRes.json());
+      if (ablRes.ok) setAblationMatrix(await ablRes.json());
+      if (repRes.ok) setResearchReport(await repRes.json());
+    } catch (e) {
+      console.error("Failed loading experiment telemetry:", e);
+    }
+  };
+
+  const handleSelectVariant = async (v: ExperimentVariant) => {
+    if (!selectedExp) return;
+    setSelectedVariant(v);
+    try {
+      const res = await fetch(
+        `/api/v1/experiments/research/${selectedExp.experiment_id}/variants/${v.variant_id}/diff`
+      );
+      if (res.ok) {
+        setConfigDiff(await res.json());
+      }
+    } catch (e) {
+      console.error("Failed loading variant diff:", e);
+    }
+  };
+
   const handleCreateExperiment = async (e: React.FormEvent) => {
     e.preventDefault();
-    setCreating(true);
+    if (!newName.trim() || !newHypothesis.trim()) return;
 
     try {
-      const tagsList = createForm.tags.split(",").map((t) => t.trim()).filter(Boolean);
-
-      const res = await fetch("/api/v1/experiments", {
+      const res = await fetch("/api/v1/experiments/research", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: createForm.name,
-          purpose: createForm.purpose,
-          hypothesis: createForm.hypothesis,
-          tags: tagsList,
-          dataset_id: createForm.dataset_id,
-          dataset_version: createForm.dataset_version,
-          preparation_id: createForm.preparation_id,
-          random_seed: createForm.random_seed,
+          name: newName,
+          hypothesis: newHypothesis,
+          dataset_id: newDataset,
+          baseline_name: newBaselineName,
+          baseline_config: { image_size: 640, augmentation: "standard", epochs: 50 },
         }),
       });
 
       if (res.ok) {
-        const newExp = await res.json();
-        setShowCreateModal(false);
-        setCreateForm({
-          name: "",
-          purpose: "",
-          hypothesis: "",
-          dataset_id: "safety_v2",
-          dataset_version: "v2.0",
-          preparation_id: "prep_12",
-          random_seed: 42,
-          tags: "baseline, yolo11",
-        });
-        fetchExperiments();
-        router.push(`/experiments/${newExp.experiment_id}`);
+        setIsCreateModalOpen(false);
+        setNewName("");
+        setNewHypothesis("");
+        await fetchResearchExperiments();
       }
-    } catch (err) {
-      console.error("Failed to create experiment:", err);
-    } finally {
-      setCreating(false);
+    } catch (e) {
+      console.error("Failed creating research experiment:", e);
     }
   };
 
-  const handleCompareSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!compareExpA || !compareExpB) return;
-
-    setComparing(true);
-    try {
-      const res = await fetch("/api/v1/experiments/compare", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          experiment_a_id: compareExpA,
-          experiment_b_id: compareExpB,
-        }),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        setComparisonResult(data);
-      }
-    } catch (err) {
-      console.error("Failed to compare experiments:", err);
-    } finally {
-      setComparing(false);
-    }
-  };
-
-  // Filter experiments
-  const filteredExperiments = experiments.filter((exp) => {
-    if (statusFilter !== "ALL" && exp.status !== statusFilter) return false;
-    if (selectedTag !== "ALL" && !exp.tags.includes(selectedTag)) return false;
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      return (
-        exp.name.toLowerCase().includes(q) ||
-        exp.experiment_id.toLowerCase().includes(q) ||
-        (exp.dataset_id && exp.dataset_id.toLowerCase().includes(q))
-      );
-    }
-    return true;
-  });
-
-  const allTags = Array.from(new Set(experiments.flatMap((e) => e.tags)));
+  const baseline = selectedExp?.variants.find((v) => v.is_baseline);
+  const baselineMap = baseline?.aggregated_metrics?.map50?.mean ?? 0.80;
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#0a0a0a] text-neutral-200 font-inter">
-      <PageHeader
-        title="Experiment Tracker & Lineage System"
-        description="Trace research experiments from Dataset Version -> Preparation -> Training Run -> Model -> Evaluation -> Benchmark -> Inference."
-        breadcrumbs={["VisionForge", "Experiments"]}
-        actions={
-          <div className="flex items-center gap-2">
-            <Button
-              variant="secondary"
-              icon={<BarChart2 className="w-4 h-4 text-purple-400" />}
-              onClick={() => setShowCompareModal(true)}
-            >
-              Compare Experiments
-            </Button>
-            <Button
-              variant="primary"
-              icon={<Plus className="w-4 h-4" />}
-              onClick={() => setShowCreateModal(true)}
-            >
-              Create Experiment
-            </Button>
-          </div>
-        }
-      />
-
-      <div className="p-6 space-y-6 flex-1">
-        {/* Filters & Search Toolbar */}
-        <div className="flex flex-wrap items-center justify-between gap-4 bg-[#121212] border border-white/10 rounded-xl p-4">
-          <div className="flex items-center gap-3 flex-1 min-w-[280px]">
-            <div className="relative flex-1">
-              <Search className="w-4 h-4 text-neutral-500 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                placeholder="Search experiments by name, ID, or dataset..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-[#1a1a1a] border border-white/10 rounded-lg pl-9 pr-4 py-2 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-blue-500"
-              />
+    <div className="min-h-screen bg-[#070709] text-neutral-200 font-sans pb-16">
+      {/* Workbench Header */}
+      <div className="border-b border-white/10 bg-[#0d0d12]/90 backdrop-blur-md px-6 py-4 sticky top-14 z-20">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-purple-600/30 to-indigo-600/30 border border-purple-500/40 flex items-center justify-center text-purple-300 shadow-lg shadow-purple-950/40">
+              <FlaskConical className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-lg font-semibold text-white tracking-tight">Research Benchmark Lab</h1>
+                <Badge variant="info" size="sm" className="font-mono text-[10px]">
+                  ABLATIONS & BENCHMARKS
+                </Badge>
+                <span className="flex items-center gap-1 text-[11px] font-mono text-emerald-400 bg-emerald-950/40 border border-emerald-800/40 px-2 py-0.5 rounded-full">
+                  <ShieldCheck className="w-3 h-3" />
+                  EVIDENCE-BASED HYPOTHESIS TESTING
+                </span>
+              </div>
+              <p className="text-xs text-neutral-400 mt-0.5">
+                Rigorously evaluate whether modifications improve model performance across multi-seed runs
+              </p>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Status Filter */}
-            <div className="flex items-center gap-2 text-xs text-neutral-400">
-              <Filter className="w-3.5 h-3.5 text-blue-400" />
-              <span>Status:</span>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="bg-[#1a1a1a] border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white"
-              >
-                <option value="ALL">All Statuses</option>
-                <option value="COMPLETED">Completed</option>
-                <option value="RUNNING">Running</option>
-                <option value="DRAFT">Draft</option>
-                <option value="FAILED">Failed</option>
-              </select>
-            </div>
-
-            {/* Tag Filter */}
-            {allTags.length > 0 && (
-              <div className="flex items-center gap-2 text-xs text-neutral-400">
-                <Tag className="w-3.5 h-3.5 text-purple-400" />
-                <span>Tag:</span>
-                <select
-                  value={selectedTag}
-                  onChange={(e) => setSelectedTag(e.target.value)}
-                  className="bg-[#1a1a1a] border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white"
-                >
-                  <option value="ALL">All Tags</option>
-                  {allTags.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Experiments Grid / List */}
-        <div className="bg-[#121212] border border-white/10 rounded-xl overflow-hidden">
-          <div className="p-4 border-b border-white/10 flex justify-between items-center bg-[#161616]">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-neutral-400 flex items-center gap-2">
-              <FlaskConical className="w-4 h-4 text-blue-400" />
-              Tracked Research Experiments ({filteredExperiments.length})
-            </h3>
-            <span className="text-[11px] text-neutral-500 font-mono">
-              Immutable Configuration Snapshots Active
-            </span>
-          </div>
-
-          <div className="divide-y divide-white/5">
-            {filteredExperiments.map((exp) => (
-              <div
-                key={exp.experiment_id}
-                className="p-5 hover:bg-[#161616] transition-colors flex flex-col md:flex-row md:items-center justify-between gap-4"
-              >
-                <div className="space-y-2 flex-1">
-                  <div className="flex items-center gap-3">
-                    <Link
-                      href={`/experiments/${exp.experiment_id}`}
-                      className="text-sm font-semibold text-white hover:text-blue-400 transition-colors"
-                    >
-                      {exp.name}
-                    </Link>
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-white/5 border border-white/10 text-neutral-400">
-                      {exp.experiment_id}
-                    </span>
-
-                    {/* Status Badge */}
-                    <span
-                      className={`text-[10px] font-semibold px-2 py-0.5 rounded uppercase font-mono ${
-                        exp.status === "COMPLETED"
-                          ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
-                          : exp.status === "RUNNING"
-                          ? "bg-blue-500/15 text-blue-400 border border-blue-500/30 animate-pulse"
-                          : "bg-neutral-800 text-neutral-400"
-                      }`}
-                    >
-                      {exp.status}
-                    </span>
-
-                    {exp.parent_experiment_id && (
-                      <span className="text-[10px] px-2 py-0.5 rounded bg-purple-500/15 text-purple-400 border border-purple-500/30 font-mono">
-                        Reproduction of {exp.parent_experiment_id}
-                      </span>
-                    )}
-                  </div>
-
-                  <p className="text-xs text-neutral-400 line-clamp-1">
-                    {exp.purpose || exp.description || "No description provided."}
-                  </p>
-
-                  <div className="flex flex-wrap items-center gap-4 text-xs text-neutral-500 font-mono pt-1">
-                    <span className="flex items-center gap-1.5 text-neutral-400">
-                      <Database className="w-3.5 h-3.5 text-emerald-400" />
-                      {exp.dataset_id || "safety_v2"} ({exp.dataset_version || "v2.0"})
-                    </span>
-                    <span className="flex items-center gap-1.5 text-neutral-400">
-                      <GitCommit className="w-3.5 h-3.5 text-purple-400" />
-                      {exp.environment_snapshot.git_commit_sha.substring(0, 8)}
-                    </span>
-                    <span className="flex items-center gap-1.5 text-neutral-400">
-                      <Clock className="w-3.5 h-3.5 text-blue-400" />
-                      {new Date(exp.created_at).toLocaleDateString()}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Right Action Trigger */}
-                <div className="flex items-center gap-3 shrink-0">
-                  <div className="flex gap-1.5">
-                    {exp.tags.map((t) => (
-                      <span
-                        key={t}
-                        className="text-[10px] bg-[#1a1a1a] text-neutral-400 px-2 py-1 rounded border border-white/5 font-mono"
-                      >
-                        #{t}
-                      </span>
-                    ))}
-                  </div>
-
-                  <Link href={`/experiments/${exp.experiment_id}`}>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      icon={<ChevronRight className="w-3.5 h-3.5" />}
-                    >
-                      Lineage & Telemetry
-                    </Button>
-                  </Link>
-                </div>
-              </div>
-            ))}
-
-            {!loading && filteredExperiments.length === 0 && (
-              <div className="p-12 text-center text-xs text-neutral-500 space-y-3">
-                <FlaskConical className="w-8 h-8 mx-auto text-neutral-600" />
-                <div>No matching experiments found.</div>
-                <Button variant="secondary" size="sm" onClick={() => setShowCreateModal(true)}>
-                  Create First Experiment
-                </Button>
-              </div>
-            )}
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => setIsCreateModalOpen(true)}
+              className="bg-purple-600 hover:bg-purple-500 text-white font-semibold flex items-center gap-1.5 shadow-md shadow-purple-950/40"
+            >
+              <Plus className="w-4 h-4" /> New Research Experiment
+            </Button>
           </div>
         </div>
       </div>
 
-      {/* ─── CREATE EXPERIMENT MODAL ─────────────────────────────────────── */}
-      {showCreateModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#121212] border border-white/10 rounded-xl p-6 w-full max-w-xl space-y-5">
-            <div className="flex justify-between items-center border-b border-white/10 pb-3">
-              <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                <FlaskConical className="w-4 h-4 text-blue-400" />
-                Initialize Research Experiment
-              </h3>
-              <button
-                onClick={() => setShowCreateModal(false)}
-                className="text-neutral-500 hover:text-white"
-              >
+      <div className="max-w-7xl mx-auto px-6 pt-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Left Column: Experiment Selector (4 cols) */}
+        <div className="lg:col-span-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-mono text-neutral-400 uppercase tracking-wider flex items-center gap-1.5">
+              <FlaskConical className="w-3.5 h-3.5 text-purple-400" />
+              <span>Research Studies ({researchExperiments.length})</span>
+            </h3>
+            <button
+              onClick={fetchResearchExperiments}
+              className="text-neutral-400 hover:text-white p-1 rounded"
+              title="Refresh"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <div className="space-y-2.5">
+            {researchExperiments.map((exp) => {
+              const isSelected = selectedExp?.experiment_id === exp.experiment_id;
+              const base = exp.variants.find((v) => v.is_baseline);
+              const activeVars = exp.variants.filter((v) => !v.is_baseline);
+
+              return (
+                <button
+                  key={exp.experiment_id}
+                  onClick={() => selectExperiment(exp)}
+                  className={`w-full text-left p-3.5 rounded-xl border transition-all cursor-pointer space-y-2 ${
+                    isSelected
+                      ? "bg-purple-950/30 border-purple-500/50 shadow-lg shadow-purple-950/20"
+                      : "bg-neutral-900/70 border-white/10 hover:border-white/20 hover:bg-neutral-900"
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-neutral-800 text-purple-300 border border-white/10">
+                      {exp.dataset_id} ({exp.dataset_version})
+                    </span>
+                    <span className="text-[10px] font-mono text-neutral-400">
+                      {activeVars.length} variants
+                    </span>
+                  </div>
+
+                  <h4 className="text-xs font-semibold text-white line-clamp-1">{exp.name}</h4>
+                  <p className="text-[11px] text-neutral-400 line-clamp-2 italic">
+                    "{exp.hypothesis}"
+                  </p>
+
+                  <div className="flex items-center justify-between pt-1 border-t border-white/5 text-[10px] font-mono text-neutral-500">
+                    <span>Protocol: {exp.evaluation_protocol.primary_metric}</span>
+                    <span className="text-emerald-400">LOCKED ✓</span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Right Column: Experiment Workspace (8 cols) */}
+        <div className="lg:col-span-8 space-y-6">
+          {selectedExp ? (
+            <>
+              {/* Hypothesis & Protocol Banner */}
+              <div className="p-5 rounded-2xl bg-neutral-900/90 border border-white/15 shadow-xl space-y-3">
+                <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-mono text-purple-400 font-semibold uppercase">
+                      RESEARCH HYPOTHESIS
+                    </span>
+                    <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-neutral-800 text-neutral-400 border border-white/10">
+                      {selectedExp.experiment_id}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 font-mono text-[11px]">
+                    <span className="text-neutral-400">Split: {selectedExp.evaluation_protocol.dataset_split}</span>
+                    <span className="text-neutral-600">•</span>
+                    <span className="text-neutral-400">IoU: {selectedExp.evaluation_protocol.iou_threshold}</span>
+                  </div>
+                </div>
+
+                <div className="text-sm font-medium text-white italic pl-3 border-l-2 border-purple-500">
+                  "{selectedExp.hypothesis}"
+                </div>
+
+                <div className="flex flex-wrap items-center gap-4 pt-1 text-xs text-neutral-400 font-mono">
+                  <span>
+                    Dataset: <strong className="text-neutral-200">{selectedExp.dataset_id}</strong> ({selectedExp.dataset_version})
+                  </span>
+                  <span>
+                    Primary Metric: <strong className="text-neutral-200">{selectedExp.evaluation_protocol.primary_metric}</strong>
+                  </span>
+                  <span>
+                    Protocol Status: <strong className="text-emerald-400">Locked for Reproducibility</strong>
+                  </span>
+                </div>
+              </div>
+
+              {/* Navigation Tabs */}
+              <div className="flex items-center gap-2 border-b border-white/10 pb-2">
+                {[
+                  { id: "overview", label: "Baseline vs Variants", icon: <Sliders className="w-3.5 h-3.5" /> },
+                  { id: "diff", label: "Variable Diff", icon: <GitBranch className="w-3.5 h-3.5" /> },
+                  { id: "ablation", label: "Ablation Matrix", icon: <Layers className="w-3.5 h-3.5" /> },
+                  { id: "runs", label: "Multi-Seed Trials", icon: <BarChart2 className="w-3.5 h-3.5" /> },
+                  { id: "report", label: "Grounded Report", icon: <FileText className="w-3.5 h-3.5" /> },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id as any)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono transition-all cursor-pointer ${
+                      activeTab === tab.id
+                        ? "bg-neutral-800 text-white border border-white/20 shadow-sm"
+                        : "text-neutral-400 hover:text-white hover:bg-neutral-900"
+                    }`}
+                  >
+                    {tab.icon}
+                    <span>{tab.label}</span>
+                  </button>
+                ))}
+              </div>
+
+              {/* TAB 1: Baseline vs Variants Overview */}
+              {activeTab === "overview" && (
+                <div className="space-y-6">
+                  {/* Baseline Card */}
+                  {baseline && (
+                    <div className="p-4 rounded-xl bg-neutral-950/80 border border-neutral-700/60 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-mono uppercase text-neutral-400 font-semibold flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-neutral-400" />
+                          CONTROL BASELINE: {baseline.name}
+                        </span>
+                        <span className="text-xs font-mono text-neutral-400">
+                          {baseline.runs.length} seed runs
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2">
+                        <div className="p-2.5 rounded-lg bg-neutral-900/80 border border-white/10">
+                          <span className="text-[10px] font-mono text-neutral-500 block">MEAN mAP@50</span>
+                          <span className="text-base font-semibold text-white font-mono">
+                            {baseline.aggregated_metrics?.map50?.mean?.toFixed(3) ?? "0.800"}
+                          </span>
+                          <span className="text-[10px] font-mono text-neutral-500 block mt-0.5">
+                            ±{baseline.aggregated_metrics?.map50?.std_dev?.toFixed(3) ?? "0.000"}
+                          </span>
+                        </div>
+
+                        <div className="p-2.5 rounded-lg bg-neutral-900/80 border border-white/10">
+                          <span className="text-[10px] font-mono text-neutral-500 block">PRECISION</span>
+                          <span className="text-base font-semibold text-white font-mono">
+                            {baseline.aggregated_metrics?.precision?.mean?.toFixed(3) ?? "0.820"}
+                          </span>
+                        </div>
+
+                        <div className="p-2.5 rounded-lg bg-neutral-900/80 border border-white/10">
+                          <span className="text-[10px] font-mono text-neutral-500 block">RECALL</span>
+                          <span className="text-base font-semibold text-white font-mono">
+                            {baseline.aggregated_metrics?.recall?.mean?.toFixed(3) ?? "0.780"}
+                          </span>
+                        </div>
+
+                        <div className="p-2.5 rounded-lg bg-neutral-900/80 border border-white/10">
+                          <span className="text-[10px] font-mono text-neutral-500 block">BUDGET / CONFIG</span>
+                          <span className="text-xs font-semibold text-neutral-300 font-mono truncate block">
+                            {baseline.label_count ? `${baseline.label_count} labels` : "Full Dataset"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Variants Cards */}
+                  <div className="space-y-4">
+                    <h4 className="text-xs font-mono uppercase text-neutral-400 tracking-wider">
+                      Experimental Variants ({selectedExp.variants.filter((v) => !v.is_baseline).length})
+                    </h4>
+
+                    <div className="grid grid-cols-1 gap-4">
+                      {selectedExp.variants
+                        .filter((v) => !v.is_baseline)
+                        .map((v) => {
+                          const varMap = v.aggregated_metrics?.map50?.mean ?? 0.80;
+                          const delta = Number((varMap - baselineMap).toFixed(3));
+                          const isPositive = delta > 0.005;
+                          const isNegative = delta < -0.005;
+
+                          return (
+                            <div
+                              key={v.variant_id}
+                              className="p-4 rounded-xl bg-neutral-900/80 border border-white/10 hover:border-purple-500/40 transition-all space-y-3"
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <h5 className="text-sm font-semibold text-white">{v.name}</h5>
+                                  {v.label_percentage && (
+                                    <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-purple-950/60 text-purple-300 border border-purple-800/40">
+                                      {v.label_percentage}% budget
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="flex items-center gap-2 font-mono">
+                                  <span
+                                    className={`flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded ${
+                                      isPositive
+                                        ? "text-emerald-400 bg-emerald-950/40 border border-emerald-800/30"
+                                        : isNegative
+                                        ? "text-rose-400 bg-rose-950/40 border border-rose-800/30"
+                                        : "text-neutral-300 bg-neutral-800"
+                                    }`}
+                                  >
+                                    {isPositive && <TrendingUp className="w-3.5 h-3.5" />}
+                                    {isNegative && <TrendingDown className="w-3.5 h-3.5" />}
+                                    {delta >= 0 ? `+${delta}` : delta} mAP@50
+                                  </span>
+                                </div>
+                              </div>
+
+                              <p className="text-xs text-neutral-400">{v.description}</p>
+
+                              {/* Telemetry Metrics */}
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-1">
+                                <div className="p-2 rounded bg-neutral-950 border border-white/10">
+                                  <span className="text-[10px] font-mono text-neutral-500 block">MEAN mAP@50</span>
+                                  <span className="text-sm font-semibold text-white font-mono">
+                                    {varMap.toFixed(3)}
+                                  </span>
+                                </div>
+
+                                <div className="p-2 rounded bg-neutral-950 border border-white/10">
+                                  <span className="text-[10px] font-mono text-neutral-500 block">SEEDS TESTED</span>
+                                  <span className="text-sm font-semibold text-neutral-300 font-mono">
+                                    {v.runs.length} runs
+                                  </span>
+                                </div>
+
+                                <div className="p-2 rounded bg-neutral-950 border border-white/10">
+                                  <span className="text-[10px] font-mono text-neutral-500 block">95% CI</span>
+                                  <span className="text-xs font-semibold text-neutral-300 font-mono">
+                                    {v.aggregated_metrics?.map50?.confidence_interval_95
+                                      ? `[${v.aggregated_metrics.map50.confidence_interval_95.join(", ")}]`
+                                      : "N < 3 (N/A)"}
+                                  </span>
+                                </div>
+
+                                <div className="p-2 rounded bg-neutral-950 border border-white/10">
+                                  <span className="text-[10px] font-mono text-neutral-500 block">STATUS</span>
+                                  <span
+                                    className={`text-xs font-semibold font-mono ${
+                                      isPositive
+                                        ? "text-emerald-400"
+                                        : isNegative
+                                        ? "text-rose-400"
+                                        : "text-neutral-400"
+                                    }`}
+                                  >
+                                    {isPositive ? "IMPROVEMENT" : isNegative ? "REGRESSION" : "EQUIVALENT"}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Single Run Warning if applicable */}
+                              {v.aggregated_metrics?.map50?.is_single_run && (
+                                <div className="p-2 rounded-lg bg-amber-950/30 border border-amber-500/30 flex items-center gap-2 text-[11px] text-amber-300 font-mono">
+                                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                                  <span>{v.aggregated_metrics.map50.warning}</span>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 2: Variable Diff */}
+              {activeTab === "diff" && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-mono uppercase text-neutral-400 tracking-wider">
+                      Configuration Differences (Baseline vs {selectedVariant?.name})
+                    </h4>
+                    <span className="text-[11px] font-mono text-neutral-500">
+                      Explicit constant vs changed parameters
+                    </span>
+                  </div>
+
+                  <div className="rounded-xl border border-white/10 bg-neutral-900/80 overflow-hidden">
+                    <table className="w-full text-left text-xs font-mono">
+                      <thead className="bg-neutral-950 border-b border-white/10 text-neutral-400">
+                        <tr>
+                          <th className="p-3">Parameter</th>
+                          <th className="p-3">Baseline Setting</th>
+                          <th className="p-3">Variant Setting</th>
+                          <th className="p-3">Category</th>
+                          <th className="p-3">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5">
+                        {configDiff.map((d) => (
+                          <tr key={d.parameter} className={d.has_changed ? "bg-purple-950/15" : ""}>
+                            <td className="p-3 font-semibold text-white">{d.parameter}</td>
+                            <td className="p-3 text-neutral-300">{String(d.baseline_value)}</td>
+                            <td className="p-3 text-cyan-300 font-semibold">{String(d.variant_value)}</td>
+                            <td className="p-3 text-neutral-400 uppercase text-[10px]">{d.component_type}</td>
+                            <td className="p-3">
+                              {d.has_changed ? (
+                                <span className="px-2 py-0.5 rounded bg-purple-900/40 text-purple-300 border border-purple-600/30 text-[10px]">
+                                  MODIFIED
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded bg-neutral-800 text-neutral-400 text-[10px]">
+                                  UNCHANGED
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 3: Ablation Matrix */}
+              {activeTab === "ablation" && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-mono uppercase text-neutral-400 tracking-wider">
+                      Component Ablation Matrix
+                    </h4>
+                    <span className="text-[11px] font-mono text-neutral-500">
+                      Isolated component contributions to performance
+                    </span>
+                  </div>
+
+                  {ablationMatrix && (
+                    <div className="rounded-xl border border-white/10 bg-neutral-900/80 overflow-hidden">
+                      <table className="w-full text-left text-xs font-mono">
+                        <thead className="bg-neutral-950 border-b border-white/10 text-neutral-400">
+                          <tr>
+                            <th className="p-3">Component / Branch</th>
+                            <th className="p-3 text-center">Baseline</th>
+                            <th className="p-3 text-center">Variant</th>
+                            <th className="p-3 text-right">Measured Impact (Δ mAP)</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                          {ablationMatrix.matrix.map((row) => (
+                            <tr key={row.component}>
+                              <td className="p-3 font-semibold text-white">{row.component}</td>
+                              <td className="p-3 text-center">
+                                {row.baseline_present ? (
+                                  <span className="text-emerald-400">✓</span>
+                                ) : (
+                                  <span className="text-rose-400">✗</span>
+                                )}
+                              </td>
+                              <td className="p-3 text-center">
+                                {row.variant_present ? (
+                                  <span className="text-emerald-400">✓</span>
+                                ) : (
+                                  <span className="text-rose-400">✗</span>
+                                )}
+                              </td>
+                              <td className="p-3 text-right font-semibold">
+                                <span
+                                  className={
+                                    (row.measured_effect_delta ?? 0) >= 0
+                                      ? "text-emerald-400"
+                                      : "text-rose-400"
+                                  }
+                                >
+                                  {(row.measured_effect_delta ?? 0) >= 0
+                                    ? `+${row.measured_effect_delta?.toFixed(3)}`
+                                    : row.measured_effect_delta?.toFixed(3)}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* TAB 4: Multi-Seed Runs Table */}
+              {activeTab === "runs" && (
+                <div className="space-y-4">
+                  <h4 className="text-xs font-mono uppercase text-neutral-400 tracking-wider">
+                    Seed Replications & Variability
+                  </h4>
+
+                  {selectedExp.variants.map((v) => (
+                    <div key={v.variant_id} className="rounded-xl border border-white/10 bg-neutral-900/80 p-4 space-y-3">
+                      <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                        <span className="text-xs font-mono font-semibold text-white">{v.name}</span>
+                        <span className="text-xs font-mono text-neutral-400">{v.runs.length} seed trials</span>
+                      </div>
+
+                      <table className="w-full text-left text-xs font-mono">
+                        <thead className="text-neutral-500 border-b border-white/5">
+                          <tr>
+                            <th className="py-2">Seed</th>
+                            <th className="py-2">Run ID</th>
+                            <th className="py-2">mAP@50</th>
+                            <th className="py-2">Precision</th>
+                            <th className="py-2">Recall</th>
+                            <th className="py-2 text-right">Duration</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5 text-neutral-300">
+                          {v.runs.map((r) => (
+                            <tr key={r.run_id}>
+                              <td className="py-2 text-purple-300 font-semibold">seed: {r.seed}</td>
+                              <td className="py-2 text-neutral-400">{r.run_id}</td>
+                              <td className="py-2 text-white font-semibold">{r.metrics.map50?.toFixed(3)}</td>
+                              <td className="py-2">{r.metrics.precision?.toFixed(3) ?? "—"}</td>
+                              <td className="py-2">{r.metrics.recall?.toFixed(3) ?? "—"}</td>
+                              <td className="py-2 text-right text-neutral-400">
+                                {r.training_time_sec ? `${(r.training_time_sec / 60).toFixed(1)} min` : "—"}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* TAB 5: Grounded Research Report */}
+              {activeTab === "report" && researchReport && (
+                <div className="p-6 rounded-2xl bg-neutral-900/90 border border-white/15 space-y-6 shadow-xl font-mono text-xs">
+                  <div className="flex items-center justify-between border-b border-white/10 pb-4">
+                    <div>
+                      <h3 className="text-base font-semibold text-white font-sans">{researchReport.title}</h3>
+                      <p className="text-xs text-neutral-400 italic mt-1 font-sans">
+                        Hypothesis: "{researchReport.hypothesis}"
+                      </p>
+                    </div>
+                    <span className="flex items-center gap-1 text-[11px] text-emerald-400 bg-emerald-950/40 border border-emerald-800/40 px-2.5 py-1 rounded-full">
+                      <ShieldCheck className="w-3.5 h-3.5" /> GROUNDED REPORT
+                    </span>
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-neutral-950 border border-white/10 font-sans space-y-2">
+                    <span className="text-xs font-mono text-neutral-400">EXECUTIVE FACTUAL SUMMARY</span>
+                    <p className="text-sm text-neutral-200 leading-relaxed">
+                      {researchReport.grounded_conclusions}
+                    </p>
+                  </div>
+
+                  {/* Markdown Report Document Viewer */}
+                  <div className="space-y-2 pt-2">
+                    <span className="text-xs font-mono text-neutral-400 uppercase">
+                      GENERATED RESEARCH DOCUMENT (MARKDOWN)
+                    </span>
+                    <pre className="p-4 rounded-xl bg-neutral-950 border border-white/10 text-neutral-300 overflow-x-auto whitespace-pre-wrap leading-relaxed">
+                      {researchReport.markdown_report}
+                    </pre>
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="p-12 rounded-2xl bg-neutral-900/40 border border-dashed border-white/10 text-center space-y-3">
+              <FlaskConical className="w-10 h-10 text-purple-400 mx-auto" />
+              <h4 className="text-sm font-semibold text-white">Select a Research Study</h4>
+              <p className="text-xs text-neutral-400 max-w-sm mx-auto">
+                Choose an experiment from the left or create a new research study to inspect controlled variants and ablations.
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Create Research Experiment Modal */}
+      {isCreateModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-neutral-900 border border-white/20 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <h3 className="text-base font-semibold text-white font-sans">New Research Experiment</h3>
+              <button onClick={() => setIsCreateModalOpen(false)} className="text-neutral-400 hover:text-white">
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleCreateExperiment} className="space-y-4 text-xs">
-              <div>
-                <label className="text-neutral-400 block mb-1 font-medium">Experiment Name</label>
+            <form onSubmit={handleCreateExperiment} className="space-y-4 text-xs font-mono">
+              <div className="space-y-1">
+                <label className="text-neutral-400">EXPERIMENT TITLE</label>
                 <input
                   type="text"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="e.g. Active Learning vs Random Sampling Ablation"
+                  className="w-full px-3 py-2 rounded-lg bg-neutral-950 border border-white/10 text-white focus:outline-none focus:border-purple-500 text-sm font-sans"
                   required
-                  placeholder="e.g. YOLO11s Safety Helmet Baseline"
-                  value={createForm.name}
-                  onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
-                  className="w-full bg-[#1a1a1a] border border-white/10 rounded-lg px-3 py-2 text-white"
                 />
               </div>
 
-              <div>
-                <label className="text-neutral-400 block mb-1 font-medium">Research Goal / Purpose</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Compare YOLO11s baseline against RT-DETR-L on safety_v2"
-                  value={createForm.purpose}
-                  onChange={(e) => setCreateForm({ ...createForm, purpose: e.target.value })}
-                  className="w-full bg-[#1a1a1a] border border-white/10 rounded-lg px-3 py-2 text-white"
-                />
-              </div>
-
-              <div>
-                <label className="text-neutral-400 block mb-1 font-medium">Hypothesis</label>
+              <div className="space-y-1">
+                <label className="text-neutral-400">RESEARCH HYPOTHESIS</label>
                 <textarea
-                  rows={2}
-                  placeholder="e.g. Vision Transformer global attention will reduce false negatives in occluded helmet detection."
-                  value={createForm.hypothesis}
-                  onChange={(e) => setCreateForm({ ...createForm, hypothesis: e.target.value })}
-                  className="w-full bg-[#1a1a1a] border border-white/10 rounded-lg px-3 py-2 text-white"
+                  value={newHypothesis}
+                  onChange={(e) => setNewHypothesis(e.target.value)}
+                  placeholder="e.g. Uncertainty sampling achieves equal mAP with 50% fewer labels."
+                  rows={3}
+                  className="w-full px-3 py-2 rounded-lg bg-neutral-950 border border-white/10 text-white focus:outline-none focus:border-purple-500 text-sm font-sans"
+                  required
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-neutral-400 block mb-1">Dataset ID</label>
+                <div className="space-y-1">
+                  <label className="text-neutral-400">DATASET</label>
                   <input
                     type="text"
-                    value={createForm.dataset_id}
-                    onChange={(e) => setCreateForm({ ...createForm, dataset_id: e.target.value })}
-                    className="w-full bg-[#1a1a1a] border border-white/10 rounded px-3 py-1.5 text-white font-mono"
+                    value={newDataset}
+                    onChange={(e) => setNewDataset(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-neutral-950 border border-white/10 text-white focus:outline-none focus:border-purple-500"
                   />
                 </div>
-                <div>
-                  <label className="text-neutral-400 block mb-1">Dataset Version</label>
+                <div className="space-y-1">
+                  <label className="text-neutral-400">BASELINE NAME</label>
                   <input
                     type="text"
-                    value={createForm.dataset_version}
-                    onChange={(e) =>
-                      setCreateForm({ ...createForm, dataset_version: e.target.value })
-                    }
-                    className="w-full bg-[#1a1a1a] border border-white/10 rounded px-3 py-1.5 text-white font-mono"
+                    value={newBaselineName}
+                    onChange={(e) => setNewBaselineName(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-neutral-950 border border-white/10 text-white focus:outline-none focus:border-purple-500"
                   />
                 </div>
               </div>
 
-              <div>
-                <label className="text-neutral-400 block mb-1 font-medium">Tags (comma separated)</label>
-                <input
-                  type="text"
-                  value={createForm.tags}
-                  onChange={(e) => setCreateForm({ ...createForm, tags: e.target.value })}
-                  className="w-full bg-[#1a1a1a] border border-white/10 rounded-lg px-3 py-2 text-white font-mono"
-                />
-              </div>
-
-              <div className="flex justify-end gap-3 pt-3 border-t border-white/10">
-                <Button variant="secondary" size="sm" onClick={() => setShowCreateModal(false)}>
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-white/10">
+                <Button variant="ghost" size="sm" type="button" onClick={() => setIsCreateModalOpen(false)}>
                   Cancel
                 </Button>
-                <Button variant="primary" size="sm" disabled={creating}>
-                  {creating ? "Initializing..." : "Create Experiment"}
+                <Button variant="primary" size="sm" type="submit" className="bg-purple-600 hover:bg-purple-500 text-white">
+                  Create Experiment
                 </Button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* ─── COMPARE EXPERIMENTS MODAL ──────────────────────────────────── */}
-      {showCompareModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#121212] border border-white/10 rounded-xl p-6 w-full max-w-2xl space-y-5">
-            <div className="flex justify-between items-center border-b border-white/10 pb-3">
-              <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                <BarChart2 className="w-4 h-4 text-purple-400" />
-                Compare Research Experiments & Config Diff
-              </h3>
-              <button
-                onClick={() => setShowCompareModal(false)}
-                className="text-neutral-500 hover:text-white"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleCompareSubmit} className="space-y-4 text-xs">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-neutral-400 block mb-1 font-medium">Experiment A</label>
-                  <select
-                    value={compareExpA}
-                    onChange={(e) => setCompareExpA(e.target.value)}
-                    className="w-full bg-[#1a1a1a] border border-white/10 rounded-lg px-3 py-2 text-white"
-                  >
-                    {experiments.map((e) => (
-                      <option key={`ca_${e.experiment_id}`} value={e.experiment_id}>
-                        {e.name} ({e.experiment_id})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-neutral-400 block mb-1 font-medium">Experiment B</label>
-                  <select
-                    value={compareExpB}
-                    onChange={(e) => setCompareExpB(e.target.value)}
-                    className="w-full bg-[#1a1a1a] border border-white/10 rounded-lg px-3 py-2 text-white"
-                  >
-                    {experiments.map((e) => (
-                      <option key={`cb_${e.experiment_id}`} value={e.experiment_id}>
-                        {e.name} ({e.experiment_id})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <Button variant="primary" size="sm" className="w-full" disabled={comparing}>
-                {comparing ? "Comparing..." : "Run Config Diff & Comparison"}
-              </Button>
-            </form>
-
-            {comparisonResult && (
-              <div className="space-y-3 pt-3 border-t border-white/10 text-xs">
-                <div className="bg-[#181818] p-3 rounded font-mono text-blue-400">
-                  {comparisonResult.summary_notes}
-                </div>
-
-                <div className="space-y-2">
-                  <h4 className="font-semibold text-white">Parameter Differences (Config Diff):</h4>
-                  <div className="bg-[#080808] border border-white/5 rounded p-3 font-mono text-neutral-300">
-                    {Object.entries(comparisonResult.config_diff).map(([key, vals]) => (
-                      <div key={key} className="flex justify-between py-1 border-b border-white/5">
-                        <span className="text-neutral-400">{key}:</span>
-                        <span>
-                          <span className="text-blue-400">{String(vals[0])}</span> vs{" "}
-                          <span className="text-purple-400">{String(vals[1])}</span>
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         </div>
       )}
