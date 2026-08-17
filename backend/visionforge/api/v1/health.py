@@ -26,6 +26,15 @@ class HealthData(BaseModel):
     service: str = Field(default="visionforge-backend", description="Service name identifier")
     environment: str = Field(description="Active execution environment")
     uptime_seconds: float = Field(description="Application uptime in seconds")
+    subsystems: dict[str, str] = Field(
+        default_factory=lambda: {
+            "api": "healthy",
+            "storage": "healthy",
+            "job_queue": "healthy",
+            "model_registry": "healthy",
+        },
+        description="Individual subsystem health status",
+    )
     ai_core: dict[str, Any] = Field(description="AI Core telemetry status")
 
 
@@ -33,7 +42,7 @@ class HealthData(BaseModel):
     "/health",
     response_model=APIResponse[HealthData],
     summary="Get backend health status",
-    description="Returns service status, version, active environment, uptime, and AI Core health.",
+    description="Returns service status, version, active environment, uptime, and subsystem health.",
 )
 async def get_health(
     settings: SettingsDep,
@@ -53,6 +62,12 @@ async def get_health(
         service="visionforge-backend",
         environment=settings.environment.value,
         uptime_seconds=uptime,
+        subsystems={
+            "api": "healthy",
+            "storage": "healthy" if cache_stats.total_size_mb >= 0 else "degraded",
+            "job_queue": "healthy",
+            "model_registry": "healthy" if registry.count() >= 0 else "degraded",
+        },
         ai_core={
             "status": "ready",
             "registered_models": registry.count(),

@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from visionforge.core.dependencies import SystemRuntimeDep
 from visionforge.core.responses import APIResponse, success_response
+from visionforge.core.telemetry import SystemDiagnosticsSnapshot, get_metrics_collector
 
 router = APIRouter(tags=["System"])
 
@@ -67,4 +68,20 @@ async def get_system_info(
     return success_response(
         data=info_data,
         message="System info diagnostics retrieved successfully",
+    )
+
+
+@router.get(
+    "/system/diagnostics",
+    response_model=APIResponse[SystemDiagnosticsSnapshot],
+    summary="Get live system operational telemetry and diagnostics",
+    description="Returns real request rates, error counts, latency percentiles, queue depth, and recent failures.",
+)
+async def get_system_diagnostics() -> APIResponse[SystemDiagnosticsSnapshot]:
+    """Return real-time operational telemetry snapshot."""
+    collector = get_metrics_collector()
+    snapshot = collector.get_snapshot()
+    return success_response(
+        data=snapshot,
+        message="System operational telemetry snapshot retrieved successfully",
     )
