@@ -23,6 +23,7 @@ from visionforge.api.v1.search import router as search_router
 from visionforge.api.v1.system import router as system_router
 from visionforge.api.v1.training import router as training_router
 from visionforge.api.v1.video import router as video_router
+from visionforge.api.v1.workflows import router as workflows_router
 
 router = APIRouter(prefix="/v1")
 router.include_router(health_router)
@@ -46,5 +47,6 @@ router.include_router(video_router)
 router.include_router(events_router)
 router.include_router(query_router)
 router.include_router(multimodal_router)
+router.include_router(workflows_router)
 
 __all__ = ["router"]
