@@ -193,7 +193,10 @@ class VisualSearchService:
                     class_name=track.class_name,
                     timestamp_sec=track.first_timestamp_sec,
                     bbox=mid_pt.bbox if mid_pt else [100.0, 100.0, 200.0, 200.0],
-                    metadata={"avg_speed": track.avg_speed_px_per_sec, "confidence": track.avg_confidence},
+                    metadata={
+                        "avg_speed": track.avg_speed_px_per_sec,
+                        "confidence": track.avg_confidence,
+                    },
                 )
             )
             indexed_count += 1
@@ -201,7 +204,9 @@ class VisualSearchService:
         # 3. Index event moments
         for evt in events:
             rec_id = f"vevt_{evt.event_id}"
-            vec = self._generate_deterministic_vector(f"event_{evt.event_type.value}_{evt.event_id}")
+            vec = self._generate_deterministic_vector(
+                f"event_{evt.event_type.value}_{evt.event_id}"
+            )
             mem_rec = VisualMemoryRecord(
                 id=rec_id,
                 embedding=vec,
@@ -269,7 +274,9 @@ class VisualSearchService:
                 model_name="siglip-base-patch16-224",
             )
             if not res.success or res.data is None:
-                raise VisualSearchServiceException(f"Failed to generate query embedding: {res.error}")
+                raise VisualSearchServiceException(
+                    f"Failed to generate query embedding: {res.error}"
+                )
 
             embedding_res: ImageEmbeddingResult = res.data
             query_vec = embedding_res.embedding
@@ -297,7 +304,11 @@ class VisualSearchService:
                 query_vec = self._generate_deterministic_vector(f"{req.video_id}_frame_{int(ts)}")
             query_summary = f"Frame @ {ts:.1f}s in video '{req.video_id}'"
 
-        elif req.query_type == VisualAssetType.OBJECT_CROP and req.run_id and req.track_id is not None:
+        elif (
+            req.query_type == VisualAssetType.OBJECT_CROP
+            and req.run_id
+            and req.track_id is not None
+        ):
             rec_id = f"vobj_{req.run_id}_tr{req.track_id}"
             try:
                 rec = self._memory_index.get_record(rec_id)
@@ -321,18 +332,20 @@ class VisualSearchService:
             query_summary = "General Visual Similarity"
 
         # 2. Execute Vector Similarity Search with Provenance Filtering
-        results, candidate_count, search_time_ms, filter_time_ms = self._search_engine.search_unified_vectors(
-            query_vector=query_vec,
-            assets_map=self._assets,
-            top_k=req.top_k,
-            metric=req.metric,
-            threshold=req.threshold,
-            filter_asset_types=req.filter_asset_types,
-            filter_dataset_id=req.filter_dataset_id,
-            filter_video_id=req.filter_video_id,
-            filter_class_name=req.filter_class_name,
-            filter_event_type=req.filter_event_type,
-            query_model="siglip-base-patch16-224",
+        results, candidate_count, search_time_ms, filter_time_ms = (
+            self._search_engine.search_unified_vectors(
+                query_vector=query_vec,
+                assets_map=self._assets,
+                top_k=req.top_k,
+                metric=req.metric,
+                threshold=req.threshold,
+                filter_asset_types=req.filter_asset_types,
+                filter_dataset_id=req.filter_dataset_id,
+                filter_video_id=req.filter_video_id,
+                filter_class_name=req.filter_class_name,
+                filter_event_type=req.filter_event_type,
+                query_model="siglip-base-patch16-224",
+            )
         )
 
         total_time_ms = round((time.perf_counter() - t_start) * 1000, 2)
@@ -442,9 +455,7 @@ class VisualSearchService:
         self._record_history(response, query_type="vector")
         return response
 
-    def get_search_history(
-        self, limit: int = 50, offset: int = 0
-    ) -> list[SearchHistoryRecord]:
+    def get_search_history(self, limit: int = 50, offset: int = 0) -> list[SearchHistoryRecord]:
         return self._history_store.get_history(limit=limit, offset=offset)
 
     def _record_history(self, payload: SearchResponsePayload, query_type: str) -> None:
@@ -465,12 +476,17 @@ class VisualSearchService:
         )
         self._history_store.record_search(rec)
 
-    def _record_unified_history(self, payload: UnifiedSearchResponse, req: UnifiedSearchRequest) -> None:
+    def _record_unified_history(
+        self, payload: UnifiedSearchResponse, req: UnifiedSearchRequest
+    ) -> None:
         rec = SearchHistoryRecord(
             search_id=payload.search_id,
             timestamp=payload.timestamp,
             query_type=str(req.query_type),
-            query_info={"summary": payload.query_summary, "filters": req.model_dump(exclude={"vector"})},
+            query_info={
+                "summary": payload.query_summary,
+                "filters": req.model_dump(exclude={"vector"}),
+            },
             model_used=payload.model_used,
             top_k=req.top_k,
             threshold=req.threshold,
@@ -505,7 +521,9 @@ class VisualSearchService:
             "saved_at": datetime.now(UTC).isoformat(),
             "assets": [a.model_dump() for a in self._assets.values()],
         }
-        self._assets_file.write_text(json.dumps(serializable, indent=2, default=str), encoding="utf-8")
+        self._assets_file.write_text(
+            json.dumps(serializable, indent=2, default=str), encoding="utf-8"
+        )
 
     def load_assets_from_disk(self) -> None:
         if self._assets_file.is_file():

@@ -112,7 +112,9 @@ class VideoIntelligenceService:
                     duration_sec = round(frame_count / fps, 2)
                 fourcc = int(cap.get(cv2.CAP_PROP_FOURCC) or 0)
                 if fourcc:
-                    codec = "".join([chr((fourcc >> 8 * i) & 0xFF) for i in range(4)]).strip() or "h264"
+                    codec = (
+                        "".join([chr((fourcc >> 8 * i) & 0xFF) for i in range(4)]).strip() or "h264"
+                    )
                 cap.release()
         except Exception as e:
             logger.warning("Could not read video with OpenCV, using defaults: %s", e)
@@ -131,7 +133,14 @@ class VideoIntelligenceService:
         )
         self._videos[vid_id] = meta
         self.save_to_disk()
-        logger.info("Registered video '%s' (%s, %dx%d, %d frames)", vid_id, p.name, width, height, frame_count)
+        logger.info(
+            "Registered video '%s' (%s, %dx%d, %d frames)",
+            vid_id,
+            p.name,
+            width,
+            height,
+            frame_count,
+        )
         return meta
 
     def get_video_metadata(self, video_id: str) -> VideoMetadata:
@@ -350,7 +359,9 @@ class VideoIntelligenceService:
                     t_record = all_tracks_map[tid]
                     t_record.last_frame = frame_idx
                     t_record.last_timestamp_sec = t_sec
-                    t_record.visibility_duration_sec = round(t_sec - t_record.first_timestamp_sec, 2)
+                    t_record.visibility_duration_sec = round(
+                        t_sec - t_record.first_timestamp_sec, 2
+                    )
                     t_record.detections_count += 1
                     t_record.observation_count += 1
                     t_record.min_confidence = min(t_record.min_confidence, conf)
@@ -358,11 +369,15 @@ class VideoIntelligenceService:
 
                     # Compute distance delta
                     last_pt = t_record.trajectory[-1]
-                    dist = math.hypot(pt.x_center_px - last_pt.x_center_px, pt.y_center_px - last_pt.y_center_px)
+                    dist = math.hypot(
+                        pt.x_center_px - last_pt.x_center_px, pt.y_center_px - last_pt.y_center_px
+                    )
                     t_record.total_distance_px = round(t_record.total_distance_px + dist, 1)
 
                     if t_record.visibility_duration_sec > 0:
-                        spd = round(t_record.total_distance_px / t_record.visibility_duration_sec, 1)
+                        spd = round(
+                            t_record.total_distance_px / t_record.visibility_duration_sec, 1
+                        )
                         t_record.avg_speed_px_per_sec = spd
                         t_record.image_space_velocity_px_s = spd
 
@@ -386,7 +401,8 @@ class VideoIntelligenceService:
         avg_dist = round(tot_dist / max(1, tot_tracks), 1)
 
         active_objs_series = [
-            {"second": s, "count": len(tids)} for s, tids in sorted(active_objects_per_second.items())
+            {"second": s, "count": len(tids)}
+            for s, tids in sorted(active_objects_per_second.items())
         ]
         detections_series = [
             {"second": s, "count": cnt} for s, cnt in sorted(detections_per_second.items())
@@ -431,7 +447,9 @@ class VideoIntelligenceService:
 
         self._runs[run_id] = run
         self.save_to_disk()
-        logger.info("Completed tracking run '%s' for video '%s' (%d tracks)", run_id, video_id, tot_tracks)
+        logger.info(
+            "Completed tracking run '%s' for video '%s' (%d tracks)", run_id, video_id, tot_tracks
+        )
         return run
 
     def get_run(self, run_id: str) -> VideoInferenceRun:
@@ -462,12 +480,18 @@ class VideoIntelligenceService:
 
         t_delta = rb.total_tracks - ra.total_tracks
         det_delta = rb.total_detections - ra.total_detections
-        dur_delta = round(rb.analytics.avg_track_duration_sec - ra.analytics.avg_track_duration_sec, 2)
+        dur_delta = round(
+            rb.analytics.avg_track_duration_sec - ra.analytics.avg_track_duration_sec, 2
+        )
 
         cls_delta: dict[str, int] = {}
-        all_cls = set(ra.analytics.tracks_by_class.keys()).union(set(rb.analytics.tracks_by_class.keys()))
+        all_cls = set(ra.analytics.tracks_by_class.keys()).union(
+            set(rb.analytics.tracks_by_class.keys())
+        )
         for c in all_cls:
-            cls_delta[c] = rb.analytics.tracks_by_class.get(c, 0) - ra.analytics.tracks_by_class.get(c, 0)
+            cls_delta[c] = rb.analytics.tracks_by_class.get(
+                c, 0
+            ) - ra.analytics.tracks_by_class.get(c, 0)
 
         findings = [
             f"Track count delta: {t_delta:+d} tracks in Video B relative to Video A.",
@@ -610,7 +634,9 @@ class VideoIntelligenceService:
             video_id=vid_id,
             model_id="yolo11s.pt",
             tracker_name="ByteTrack",
-            sampling_config=FrameSamplingConfig(mode=FrameSamplingMode.EVERY_2ND_FRAME, sample_interval=2),
+            sampling_config=FrameSamplingConfig(
+                mode=FrameSamplingMode.EVERY_2ND_FRAME, sample_interval=2
+            ),
         )
 
 

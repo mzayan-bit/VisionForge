@@ -110,9 +110,7 @@ def test_search_service_empty_memory(tmp_path):
     empty_mem = VisualMemoryIndex(storage_dir=str(tmp_path / "empty_mem"))
     history = SearchHistoryStore(storage_dir=str(tmp_path / "history"))
     engine = VisualSearchEngine(memory_index=empty_mem)
-    svc = VisualSearchService(
-        search_engine=engine, memory_index=empty_mem, history_store=history
-    )
+    svc = VisualSearchService(search_engine=engine, memory_index=empty_mem, history_store=history)
 
     query_vec = [0.1] * 768
     res = svc.search_by_vector(query_vector=query_vec, top_k=5)

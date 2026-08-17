@@ -194,13 +194,17 @@ class TemporalEventDetector:
                 continue
 
             inside_states: list[bool] = [
-                is_point_in_region((pt.x_center_px, pt.y_center_px), region) for pt in track.trajectory
+                is_point_in_region((pt.x_center_px, pt.y_center_px), region)
+                for pt in track.trajectory
             ]
 
             # Apply debouncing window
             debounced_inside: list[bool] = list(inside_states)
             for i in range(1, len(debounced_inside) - 1):
-                if inside_states[i - 1] == inside_states[i + 1] and inside_states[i] != inside_states[i - 1]:
+                if (
+                    inside_states[i - 1] == inside_states[i + 1]
+                    and inside_states[i] != inside_states[i - 1]
+                ):
                     debounced_inside[i] = inside_states[i - 1]
 
             in_region = False
@@ -366,7 +370,8 @@ class TemporalEventDetector:
                         event_frame_idx=(entry_pt.frame_index + end_pt.frame_index) // 2,
                         frame_after_idx=end_pt.frame_index,
                         start_timestamp_sec=entry_pt.timestamp_sec,
-                        representative_timestamp_sec=(entry_pt.timestamp_sec + end_pt.timestamp_sec) / 2.0,
+                        representative_timestamp_sec=(entry_pt.timestamp_sec + end_pt.timestamp_sec)
+                        / 2.0,
                         end_timestamp_sec=end_pt.timestamp_sec,
                         highlight_track_ids=[track.track_id],
                         highlight_region_id=region.region_id,
@@ -415,7 +420,9 @@ class TemporalEventDetector:
                 p2 = track.trajectory[i]
                 dt = p2.timestamp_sec - p1.timestamp_sec
                 if dt > 0:
-                    dist = math.hypot(p2.x_center_px - p1.x_center_px, p2.y_center_px - p1.y_center_px)
+                    dist = math.hypot(
+                        p2.x_center_px - p1.x_center_px, p2.y_center_px - p1.y_center_px
+                    )
                     spd = dist / dt
                     speeds.append(spd)
                     p2.instantaneous_speed_px_s = round(spd, 2)
@@ -445,7 +452,8 @@ class TemporalEventDetector:
                             event_frame_idx=(start_pt.frame_index + pt.frame_index) // 2,
                             frame_after_idx=pt.frame_index,
                             start_timestamp_sec=start_pt.timestamp_sec,
-                            representative_timestamp_sec=(start_pt.timestamp_sec + pt.timestamp_sec) / 2.0,
+                            representative_timestamp_sec=(start_pt.timestamp_sec + pt.timestamp_sec)
+                            / 2.0,
                             end_timestamp_sec=pt.timestamp_sec,
                             highlight_track_ids=[track.track_id],
                             trigger_rule=rule,
@@ -468,7 +476,10 @@ class TemporalEventDetector:
                                     "track_id": track.track_id,
                                     "class_name": track.class_name,
                                     "stopped_duration_sec": round(dur, 2),
-                                    "average_speed_px_s": round(sum(speeds[stop_start_idx:i]) / max(1, i - stop_start_idx), 2),
+                                    "average_speed_px_s": round(
+                                        sum(speeds[stop_start_idx:i]) / max(1, i - stop_start_idx),
+                                        2,
+                                    ),
                                 },
                                 description=f"Track #{track.track_id} ({track.class_name}) stopped in place for {dur:.1f}s.",
                                 trigger_rule=rule,
@@ -504,7 +515,9 @@ class TemporalEventDetector:
                 for f_idx in common_frames:
                     p1 = t1_frames[f_idx]
                     p2 = t2_frames[f_idx]
-                    dist = math.hypot(p1.x_center_px - p2.x_center_px, p1.y_center_px - p2.y_center_px)
+                    dist = math.hypot(
+                        p1.x_center_px - p2.x_center_px, p1.y_center_px - p2.y_center_px
+                    )
 
                     if dist <= prox_thresh and not in_proximity:
                         in_proximity = True
@@ -523,7 +536,8 @@ class TemporalEventDetector:
                                 event_frame_idx=(prox_start_frame + f_idx) // 2,
                                 frame_after_idx=f_idx,
                                 start_timestamp_sec=prox_start_time,
-                                representative_timestamp_sec=(prox_start_time + p1.timestamp_sec) / 2.0,
+                                representative_timestamp_sec=(prox_start_time + p1.timestamp_sec)
+                                / 2.0,
                                 end_timestamp_sec=p1.timestamp_sec,
                                 highlight_track_ids=[t1.track_id, t2.track_id],
                                 trigger_rule=rule,
@@ -583,7 +597,11 @@ class TemporalEventDetector:
                         source_track_ids=[],
                         source_frame_range=[int(t * 30), int(t * 30)],
                         reliability=EventReliability.HIGH,
-                        event_params={"previous_count": prev_count, "new_count": cnt, "delta": delta},
+                        event_params={
+                            "previous_count": prev_count,
+                            "new_count": cnt,
+                            "delta": delta,
+                        },
                         description=f"Active object count changed from {prev_count} to {cnt} at t={t:.1f}s.",
                         trigger_rule=rule,
                         evidence=None,
@@ -606,19 +624,24 @@ class TemporalEventDetector:
 
                     # Extract region visit
                     if (
-                        evt.event_type in (EventType.OBJECT_ENTERED_REGION, EventType.OBJECT_STAYED_IN_REGION)
+                        evt.event_type
+                        in (EventType.OBJECT_ENTERED_REGION, EventType.OBJECT_STAYED_IN_REGION)
                         and "region_id" in evt.event_params
                     ):
                         rid = evt.event_params["region_id"]
                         rname = evt.event_params.get("region_name", "Zone")
-                        existing = next((rv for rv in t.regions_visited if rv.region_id == rid), None)
+                        existing = next(
+                            (rv for rv in t.regions_visited if rv.region_id == rid), None
+                        )
                         if not existing:
                             t.regions_visited.append(
                                 RegionVisit(
                                     region_id=rid,
                                     region_name=rname,
                                     entered_sec=evt.start_timestamp_sec,
-                                    exited_sec=evt.end_timestamp_sec if evt.duration_sec > 0 else None,
+                                    exited_sec=evt.end_timestamp_sec
+                                    if evt.duration_sec > 0
+                                    else None,
                                     dwell_duration_sec=evt.duration_sec,
                                     visit_count=1,
                                 )

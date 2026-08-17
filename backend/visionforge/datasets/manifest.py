@@ -60,30 +60,34 @@ def export_manifest_csv(manifest: DatasetPreparationManifest) -> str:
     """Generate CSV string of sample references and split assignments."""
     output = StringIO()
     writer = csv.writer(output)
-    writer.writerow([
-        "sample_id",
-        "split",
-        "content_hash",
-        "width",
-        "height",
-        "format",
-        "tags",
-        "leakage_group_id",
-    ])
+    writer.writerow(
+        [
+            "sample_id",
+            "split",
+            "content_hash",
+            "width",
+            "height",
+            "format",
+            "tags",
+            "leakage_group_id",
+        ]
+    )
 
     for s in manifest.samples:
         tags_str = ";".join(s.tags) if s.tags else ""
         meta = s.image_metadata or {}
-        writer.writerow([
-            s.id,
-            s.split,
-            s.content_hash,
-            meta.get("width", ""),
-            meta.get("height", ""),
-            meta.get("format", ""),
-            tags_str,
-            s.leakage_group_id or "",
-        ])
+        writer.writerow(
+            [
+                s.id,
+                s.split,
+                s.content_hash,
+                meta.get("width", ""),
+                meta.get("height", ""),
+                meta.get("format", ""),
+                tags_str,
+                s.leakage_group_id or "",
+            ]
+        )
 
     return output.getvalue()
 
@@ -95,7 +99,9 @@ def materialize_prepared_dataset(
 
     Creates ~/.cache/visionforge/datasets/prepared/{prep_id}/ containing manifest.json & manifest.csv.
     """
-    raw_path = storage_dir or (Path(get_settings().model_cache_dir).parent / "datasets" / "prepared")
+    raw_path = storage_dir or (
+        Path(get_settings().model_cache_dir).parent / "datasets" / "prepared"
+    )
     prep_dir = Path(raw_path) / manifest.preparation_id
     prep_dir.mkdir(parents=True, exist_ok=True)
 

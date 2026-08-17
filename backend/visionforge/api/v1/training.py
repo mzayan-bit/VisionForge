@@ -28,7 +28,9 @@ class RegisterModelRequest(BaseModel):
 class PredictSmokeTestRequest(BaseModel):
     """Payload to trigger inference smoke test."""
 
-    sample_image_paths: list[str] = Field(default_factory=list, description="Optional paths to test images")
+    sample_image_paths: list[str] = Field(
+        default_factory=list, description="Optional paths to test images"
+    )
 
 
 def _get_service() -> TrainingService:
@@ -96,7 +98,9 @@ async def evaluate_training_run(run_id: str) -> APIResponse[EvaluationResult]:
     svc = _get_service()
     try:
         eval_res = svc.evaluate_test_set(run_id)
-        return success_response(data=eval_res, message=f"Test set evaluation completed for '{run_id}'")
+        return success_response(
+            data=eval_res, message=f"Test set evaluation completed for '{run_id}'"
+        )
     except Exception as exc:
         status = getattr(exc, "status_code", 500)
         raise HTTPException(status_code=status, detail=str(exc)) from exc
@@ -115,7 +119,9 @@ async def register_training_model(
     svc = _get_service()
     try:
         meta = svc.register_model_artifact(run_id, version_tag=req.version_tag)
-        return success_response(data=meta, message=f"Model registered as '{meta.name}' ({meta.version})")
+        return success_response(
+            data=meta, message=f"Model registered as '{meta.name}' ({meta.version})"
+        )
     except Exception as exc:
         status = getattr(exc, "status_code", 500)
         raise HTTPException(status_code=status, detail=str(exc)) from exc
@@ -134,7 +140,9 @@ async def predict_smoke_test(
     svc = _get_service()
     try:
         result = svc.run_inference_smoke_test(run_id, sample_image_paths=req.sample_image_paths)
-        return success_response(data=result, message=f"Inference smoke test completed for '{run_id}'")
+        return success_response(
+            data=result, message=f"Inference smoke test completed for '{run_id}'"
+        )
     except Exception as exc:
         status = getattr(exc, "status_code", 500)
         raise HTTPException(status_code=status, detail=str(exc)) from exc

@@ -230,7 +230,9 @@ class EvaluationService:
         """Generate markdown report for a benchmark run."""
         bench = self.get_benchmark(benchmark_id)
         if not bench:
-            return f"# VisionForge Research Benchmark Report: {benchmark_id}\n\nBenchmark not found."
+            return (
+                f"# VisionForge Research Benchmark Report: {benchmark_id}\n\nBenchmark not found."
+            )
 
         m = bench.metrics
         r = bench.runtime_metrics
@@ -673,9 +675,13 @@ class EvaluationService:
                 if (e.ground_truth_class == class_name or e.predicted_class == class_name)
             ]
         if confidence_min is not None:
-            items = [e for e in items if e.confidence is not None and e.confidence >= confidence_min]
+            items = [
+                e for e in items if e.confidence is not None and e.confidence >= confidence_min
+            ]
         if confidence_max is not None:
-            items = [e for e in items if e.confidence is not None and e.confidence <= confidence_max]
+            items = [
+                e for e in items if e.confidence is not None and e.confidence <= confidence_max
+            ]
         if iou_min is not None:
             items = [e for e in items if e.iou is not None and e.iou >= iou_min]
         if iou_max is not None:
@@ -1042,9 +1048,7 @@ class EvaluationService:
 
     # ─── Internal Helper Methods ───────────────────────────────────────
 
-    def _aggregate_confusion_pairs(
-        self, errors: list[FailureSampleDetail]
-    ) -> list[ConfusionPair]:
+    def _aggregate_confusion_pairs(self, errors: list[FailureSampleDetail]) -> list[ConfusionPair]:
         pair_counts: dict[tuple[str, str], list[FailureSampleDetail]] = {}
         for err in errors:
             if (
@@ -1125,9 +1129,7 @@ class EvaluationService:
                 ]
         return preds
 
-    def _generate_synthetic_failure_gallery(
-        self, eval_id: str
-    ) -> list[FailureSampleDetail]:
+    def _generate_synthetic_failure_gallery(self, eval_id: str) -> list[FailureSampleDetail]:
         items: list[FailureSampleDetail] = []
         samples = [
             {
@@ -1184,9 +1186,7 @@ class EvaluationService:
 
         for s in samples:
             priority = (
-                0.40 * (1.0 - (s["conf"] or 0.0))
-                + 0.35 * (1.0 - (s["iou"] or 0.0))
-                + 0.25 * 0.8
+                0.40 * (1.0 - (s["conf"] or 0.0)) + 0.35 * (1.0 - (s["iou"] or 0.0)) + 0.25 * 0.8
             )
             items.append(
                 FailureSampleDetail(

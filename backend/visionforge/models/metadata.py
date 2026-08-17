@@ -26,12 +26,8 @@ class ModelSource(BaseModel):
     provider: str = Field(
         default="local", description="Source provider (e.g. 'huggingface', 'local', 'url')"
     )
-    repository: str = Field(
-        default="", description="Source repository identifier or URL"
-    )
-    download_url: str = Field(
-        default="", description="Direct download URL for model checkpoint"
-    )
+    repository: str = Field(default="", description="Source repository identifier or URL")
+    download_url: str = Field(default="", description="Direct download URL for model checkpoint")
     sha256: str = Field(
         default="", description="Expected SHA-256 checksum for integrity verification"
     )
@@ -85,20 +81,12 @@ class InstalledModelMetadata(BaseModel):
     install_path: str = Field(
         default="", description="Absolute filesystem path to installed model directory"
     )
-    disk_size_bytes: int = Field(
-        default=0, description="Installed disk consumption in bytes"
-    )
-    disk_size_mb: float = Field(
-        default=0.0, description="Installed disk consumption in megabytes"
-    )
+    disk_size_bytes: int = Field(default=0, description="Installed disk consumption in bytes")
+    disk_size_mb: float = Field(default=0.0, description="Installed disk consumption in megabytes")
 
     # Timestamps
-    installed_at: str = Field(
-        default="", description="ISO 8601 installation timestamp"
-    )
-    last_used_at: str = Field(
-        default="", description="ISO 8601 last inference execution timestamp"
-    )
+    installed_at: str = Field(default="", description="ISO 8601 installation timestamp")
+    last_used_at: str = Field(default="", description="ISO 8601 last inference execution timestamp")
     updated_at: str = Field(
         default_factory=lambda: datetime.now(UTC).isoformat(),
         description="ISO 8601 last metadata update timestamp",

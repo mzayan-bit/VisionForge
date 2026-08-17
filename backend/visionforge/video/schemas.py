@@ -61,10 +61,15 @@ class FrameSamplingConfig(BaseModel):
         default=FrameSamplingMode.EVERY_2ND_FRAME, description="Sampling mode strategy"
     )
     sample_interval: int = Field(
-        default=2, ge=1, le=60, description="Sampling stride interval (e.g. 2 = process every 2nd frame)"
+        default=2,
+        ge=1,
+        le=60,
+        description="Sampling stride interval (e.g. 2 = process every 2nd frame)",
     )
     target_fps: float | None = Field(default=None, description="Optional target sampling FPS")
-    total_sampled_frames: int = Field(default=0, description="Count of frames sampled for inference")
+    total_sampled_frames: int = Field(
+        default=0, description="Count of frames sampled for inference"
+    )
 
 
 class FrameRef(BaseModel):
@@ -101,7 +106,9 @@ class RegionVisit(BaseModel):
     region_id: str = Field(description="Region of Interest ID")
     region_name: str = Field(description="Human readable zone name")
     entered_sec: float = Field(description="Timestamp when object entered region")
-    exited_sec: float | None = Field(default=None, description="Timestamp when object exited region")
+    exited_sec: float | None = Field(
+        default=None, description="Timestamp when object exited region"
+    )
     dwell_duration_sec: float = Field(default=0.0, description="Total dwell duration in seconds")
     visit_count: int = Field(default=1, description="Number of discrete visits to this zone")
 
@@ -120,7 +127,9 @@ class Track(BaseModel):
     min_confidence: float = Field(description="Minimum detection confidence score")
     max_confidence: float = Field(description="Maximum detection confidence score")
     total_distance_px: float = Field(description="Total trajectory distance traversed in pixels")
-    avg_speed_px_per_sec: float = Field(description="Average image-space velocity (pixels / second)")
+    avg_speed_px_per_sec: float = Field(
+        description="Average image-space velocity (pixels / second)"
+    )
     image_space_velocity_px_s: float = Field(
         default=0.0, description="Explicitly labeled image-space displacement velocity"
     )
@@ -149,12 +158,20 @@ class TemporalAnalytics(BaseModel):
     tracks_by_class: dict[str, int] = Field(
         default_factory=dict, description="Count of unique tracks per object class"
     )
-    avg_track_duration_sec: float = Field(description="Average track visibility duration in seconds")
-    longest_track_duration_sec: float = Field(description="Longest single track duration in seconds")
+    avg_track_duration_sec: float = Field(
+        description="Average track visibility duration in seconds"
+    )
+    longest_track_duration_sec: float = Field(
+        description="Longest single track duration in seconds"
+    )
     avg_pixel_movement_px: float = Field(description="Average total distance traversed in pixels")
     total_region_visits: int = Field(default=0, description="Total zone entry events")
-    avg_dwell_time_sec: float = Field(default=0.0, description="Average dwell duration across zones")
-    median_dwell_time_sec: float = Field(default=0.0, description="Median dwell duration in seconds")
+    avg_dwell_time_sec: float = Field(
+        default=0.0, description="Average dwell duration across zones"
+    )
+    median_dwell_time_sec: float = Field(
+        default=0.0, description="Median dwell duration in seconds"
+    )
     events_per_minute: float = Field(default=0.0, description="Temporal event frequency")
     active_objects_over_time: list[dict[str, Any]] = Field(
         default_factory=list, description="Time series of active objects count per second"
@@ -183,10 +200,14 @@ class VideoSession(BaseModel):
     status: VideoSessionStatus = Field(
         default=VideoSessionStatus.COMPLETED, description="Execution status"
     )
-    video_fingerprint: str = Field(default="sha256_mock_video", description="Cryptographic asset hash")
+    video_fingerprint: str = Field(
+        default="sha256_mock_video", description="Cryptographic asset hash"
+    )
     created_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
     completed_at: str | None = Field(default=None)
-    lineage: dict[str, Any] = Field(default_factory=dict, description="Dataset/model provenance lineage")
+    lineage: dict[str, Any] = Field(
+        default_factory=dict, description="Dataset/model provenance lineage"
+    )
 
 
 class VideoInferenceRun(BaseModel):
@@ -208,7 +229,9 @@ class VideoInferenceRun(BaseModel):
     tracks: list[Track] = Field(default_factory=list, description="List of tracked object entities")
     analytics: TemporalAnalytics = Field(description="Temporal statistics and time series data")
     processing_fps: float = Field(description="Video pipeline processing speed in frames/sec")
-    inference_latency_ms: float = Field(description="Average per-frame model inference latency in ms")
+    inference_latency_ms: float = Field(
+        description="Average per-frame model inference latency in ms"
+    )
     tracking_latency_ms: float = Field(description="Average per-frame tracker update latency in ms")
 
 

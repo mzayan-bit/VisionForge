@@ -27,9 +27,7 @@ class StorageStats(BaseModel):
     total_files: int = Field(default=0, description="Total files across all subdirectories")
     total_size_bytes: int = Field(default=0, description="Total disk consumption in bytes")
     total_size_mb: float = Field(default=0.0, description="Total disk consumption in MB")
-    models_count: int = Field(
-        default=0, description="Number of model directories present"
-    )
+    models_count: int = Field(default=0, description="Number of model directories present")
 
 
 class ModelStorage:
@@ -95,9 +93,7 @@ class ModelStorage:
         """Return names of all model directories present under models/."""
         if not self.models_dir.exists():
             return []
-        return sorted(
-            d.name for d in self.models_dir.iterdir() if d.is_dir()
-        )
+        return sorted(d.name for d in self.models_dir.iterdir() if d.is_dir())
 
     def get_storage_stats(self) -> StorageStats:
         """Calculate and return aggregate storage usage statistics."""

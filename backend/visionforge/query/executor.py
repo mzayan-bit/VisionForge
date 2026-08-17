@@ -27,7 +27,11 @@ class QueryExecutor:
     """Deterministic Query Executor operating over pre-computed video tracks, events, and regions."""
 
     def execute_query(
-        self, query: VisualQuery, original_text: str, interpretation_explanation: str, interp_time_ms: float
+        self,
+        query: VisualQuery,
+        original_text: str,
+        interpretation_explanation: str,
+        interp_time_ms: float,
     ) -> QueryResult:
         """Execute structured VisualQuery DSL against stored facts and return evidence-backed QueryResult."""
         t_start = time.perf_counter()
@@ -52,7 +56,12 @@ class QueryExecutor:
             res_type = ResultType.TRACK_LIST
             records, evidence, summary_text = self._execute_track_query(query, run, events)
 
-        elif query.query_type in (QueryType.EVENT_SEARCH, QueryType.EVENT_AGGREGATION, QueryType.TIME_RANGE_SEARCH, QueryType.REGION_SEARCH):
+        elif query.query_type in (
+            QueryType.EVENT_SEARCH,
+            QueryType.EVENT_AGGREGATION,
+            QueryType.TIME_RANGE_SEARCH,
+            QueryType.REGION_SEARCH,
+        ):
             res_type = ResultType.EVENT_LIST
             records, evidence, summary_text = self._execute_event_query(query, run, events)
 
@@ -98,13 +107,13 @@ class QueryExecutor:
 
         # Filter active tracks at target timestamp
         active_tracks: list[Track] = [
-            t
-            for t in run.tracks
-            if t.first_timestamp_sec <= ts <= t.last_timestamp_sec + 0.5
+            t for t in run.tracks if t.first_timestamp_sec <= ts <= t.last_timestamp_sec + 0.5
         ]
 
         if query.object_class:
-            active_tracks = [t for t in active_tracks if t.class_name.lower() == query.object_class.lower()]
+            active_tracks = [
+                t for t in active_tracks if t.class_name.lower() == query.object_class.lower()
+            ]
 
         cnt = len(active_tracks)
         cls_str = f"'{query.object_class}' " if query.object_class else ""
@@ -123,7 +132,9 @@ class QueryExecutor:
             QueryEvidenceItem(
                 track_id=t.track_id,
                 timestamp_sec=ts,
-                frame_idx=int(ts * run.sampling_config.total_sampled_frames / max(1.0, run.duration_sec)),
+                frame_idx=int(
+                    ts * run.sampling_config.total_sampled_frames / max(1.0, run.duration_sec)
+                ),
                 description=f"Track #{t.track_id} ({t.class_name}) visible at t={ts:.1f}s.",
                 action_link=f"/video-lab?seek={ts:.1f}&track={t.track_id}",
             )
@@ -138,16 +149,22 @@ class QueryExecutor:
         matching_tracks = list(run.tracks)
 
         if query.object_class:
-            matching_tracks = [t for t in matching_tracks if t.class_name.lower() == query.object_class.lower()]
+            matching_tracks = [
+                t for t in matching_tracks if t.class_name.lower() == query.object_class.lower()
+            ]
 
         if query.track_id is not None:
             matching_tracks = [t for t in matching_tracks if t.track_id == query.track_id]
 
         if query.min_duration_sec is not None:
-            matching_tracks = [t for t in matching_tracks if t.visibility_duration_sec >= query.min_duration_sec]
+            matching_tracks = [
+                t for t in matching_tracks if t.visibility_duration_sec >= query.min_duration_sec
+            ]
 
         if query.min_confidence is not None:
-            matching_tracks = [t for t in matching_tracks if t.avg_confidence >= query.min_confidence]
+            matching_tracks = [
+                t for t in matching_tracks if t.avg_confidence >= query.min_confidence
+            ]
 
         if query.region_name:
             # Find tracks involved in events for that region
@@ -220,7 +237,9 @@ class QueryExecutor:
             ]
 
         if query.min_duration_sec is not None:
-            matching_events = [e for e in matching_events if e.duration_sec >= query.min_duration_sec]
+            matching_events = [
+                e for e in matching_events if e.duration_sec >= query.min_duration_sec
+            ]
 
         records = [e.model_dump() for e in matching_events]
 
@@ -252,7 +271,9 @@ class QueryExecutor:
 
         return records, evidence, summary
 
-    def _apply_sorting_and_limit(self, records: list[dict[str, Any]], query: VisualQuery) -> list[dict[str, Any]]:
+    def _apply_sorting_and_limit(
+        self, records: list[dict[str, Any]], query: VisualQuery
+    ) -> list[dict[str, Any]]:
         if not records:
             return []
 

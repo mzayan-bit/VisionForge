@@ -89,7 +89,9 @@ def test_annotation_quality_flags():
     assert any(i.flag == AnnotationQualityFlag.OUT_OF_BOUNDS_COORDINATES.value for i in iss_oob)
 
     # 3. Tiny Box
-    annos_tiny = [{"class_name": "bolt", "bbox": [10.0, 10.0, 12.0, 12.0]}]  # Area = 4 / (1280*720) = 0.000004
+    annos_tiny = [
+        {"class_name": "bolt", "bbox": [10.0, 10.0, 12.0, 12.0]}
+    ]  # Area = 4 / (1280*720) = 0.000004
     iss_tiny = DatasetQualityAnalyzer.inspect_annotation_quality(
         sample_id="img_t",
         image_path="/test/t.jpg",
@@ -123,7 +125,15 @@ def test_class_cooccurrence_computation():
     }
     coocs = DatasetQualityAnalyzer.compute_class_cooccurrence(annos, ["person", "helmet", "vest"])
 
-    person_helmet = next((c for c in coocs if (c.class_a == "person" and c.class_b == "helmet") or (c.class_a == "helmet" and c.class_b == "person")), None)
+    person_helmet = next(
+        (
+            c
+            for c in coocs
+            if (c.class_a == "person" and c.class_b == "helmet")
+            or (c.class_a == "helmet" and c.class_b == "person")
+        ),
+        None,
+    )
     assert person_helmet is not None
     assert person_helmet.cooccurrence_count == 2
     assert person_helmet.cooccurrence_rate == pytest.approx(2 / 3.0, rel=1e-2)
@@ -137,7 +147,11 @@ def test_cross_split_leakage_detection():
             {"id": "train_02", "file_path": "/train/02.jpg", "content_hash": "hash_train_02"},
         ],
         "test": [
-            {"id": "test_01", "file_path": "/test/01.jpg", "content_hash": "hash_identical_01"},  # EXACT DUPLICATE
+            {
+                "id": "test_01",
+                "file_path": "/test/01.jpg",
+                "content_hash": "hash_identical_01",
+            },  # EXACT DUPLICATE
             {"id": "test_02", "file_path": "/test/02.jpg", "content_hash": "hash_test_02"},
         ],
     }
@@ -153,8 +167,25 @@ def test_cross_split_leakage_detection():
 def test_hard_sample_prioritization():
     """Verify composite hard sample difficulty ranking."""
     samples = [
-        {"id": "s_easy", "file_path": "/img/easy.jpg", "split": "train", "confidence": 0.95, "annotations": [{"class_name": "person"}]},
-        {"id": "s_hard", "file_path": "/img/hard.jpg", "split": "train", "confidence": 0.40, "annotations": [{"class_name": "person"}, {"class_name": "helmet"}, {"class_name": "vest"}, {"class_name": "gloves"}]},
+        {
+            "id": "s_easy",
+            "file_path": "/img/easy.jpg",
+            "split": "train",
+            "confidence": 0.95,
+            "annotations": [{"class_name": "person"}],
+        },
+        {
+            "id": "s_hard",
+            "file_path": "/img/hard.jpg",
+            "split": "train",
+            "confidence": 0.40,
+            "annotations": [
+                {"class_name": "person"},
+                {"class_name": "helmet"},
+                {"class_name": "vest"},
+                {"class_name": "gloves"},
+            ],
+        },
     ]
     eval_fails = [
         {"image_id": "s_hard", "predicted_class": "person"},
@@ -201,7 +232,9 @@ def test_curation_decision_submission():
 def test_datasets_intelligence_api_endpoints():
     """Verify REST API endpoints for Dataset Intelligence workspace."""
     # 1. Profile
-    res_prof = client.get("/api/v1/datasets/intelligence/profile?dataset_id=safety_v2&version=v2.0.0")
+    res_prof = client.get(
+        "/api/v1/datasets/intelligence/profile?dataset_id=safety_v2&version=v2.0.0"
+    )
     assert res_prof.status_code == 200
     assert res_prof.json()["data"]["dataset_id"] == "safety_v2"
 
@@ -226,7 +259,9 @@ def test_datasets_intelligence_api_endpoints():
     assert isinstance(res_hard.json()["data"], list)
 
     # 6. Diff
-    res_diff = client.get("/api/v1/datasets/intelligence/diff?dataset_id=safety_v2&version_a=v1.0.0&version_b=v2.0.0")
+    res_diff = client.get(
+        "/api/v1/datasets/intelligence/diff?dataset_id=safety_v2&version_a=v1.0.0&version_b=v2.0.0"
+    )
     assert res_diff.status_code == 200
     assert res_diff.json()["data"]["annotations_count_delta"] > 0
 

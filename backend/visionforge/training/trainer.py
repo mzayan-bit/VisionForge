@@ -115,7 +115,11 @@ class UltralyticsTrainer:
             best_pt.write_bytes(b"VF_CHECKPOINT_BEST_PT")
             last_pt.write_bytes(b"VF_CHECKPOINT_LAST_PT")
 
-        best_metrics = max(metrics_history, key=lambda m: m.map50) if metrics_history else MetricSnapshot(epoch=1)
+        best_metrics = (
+            max(metrics_history, key=lambda m: m.map50)
+            if metrics_history
+            else MetricSnapshot(epoch=1)
+        )
         return metrics_history, best_metrics, best_pt, last_pt
 
     def evaluate_model(self, checkpoint_path: Path, dataset_yaml: Path) -> EvaluationResult:

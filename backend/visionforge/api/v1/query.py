@@ -66,9 +66,7 @@ def execute_structured_query(payload: ExecuteStructuredQueryRequest) -> QueryRes
     response_model=list[QueryHistoryItem],
     summary="List historical query executions",
 )
-def list_query_history(
-    limit: int = Query(default=50, ge=1, le=200)
-) -> list[QueryHistoryItem]:
+def list_query_history(limit: int = Query(default=50, ge=1, le=200)) -> list[QueryHistoryItem]:
     """Retrieve list of recent query execution history summary items."""
     service = get_visual_query_service()
     return service.list_history(limit=limit)

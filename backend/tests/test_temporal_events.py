@@ -114,7 +114,9 @@ def create_synthetic_run() -> VideoInferenceRun:
         video_id="vid_synth_01",
         model_id="yolo11s.pt",
         tracker_name="ByteTrack",
-        sampling_config=FrameSamplingConfig(mode="EVERY_FRAME", sample_interval=1, total_sampled_frames=10),
+        sampling_config=FrameSamplingConfig(
+            mode="EVERY_FRAME", sample_interval=1, total_sampled_frames=10
+        ),
         duration_sec=10.0,
         processed_frames=10,
         total_detections=20,
@@ -150,7 +152,9 @@ def test_temporal_event_detector_rule_logic():
         coordinates=[[100.0, 100.0], [500.0, 500.0]],
     )
 
-    cfg = EventRuleConfig(dwell_threshold_sec=3.0, proximity_threshold_px=50.0, separation_threshold_px=150.0)
+    cfg = EventRuleConfig(
+        dwell_threshold_sec=3.0, proximity_threshold_px=50.0, separation_threshold_px=150.0
+    )
     detector = TemporalEventDetector(config=cfg)
 
     events = detector.detect_events(run, [region_a])

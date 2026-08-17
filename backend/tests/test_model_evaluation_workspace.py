@@ -20,13 +20,27 @@ def test_synthetic_evaluation_error_categorization():
 
     # 1. Correct Match (TP)
     gt_tp = [{"class_id": 0, "class_name": "helmet", "bbox": [10.0, 10.0, 50.0, 50.0]}]
-    pred_tp = [{"class_id": 0, "class_name": "helmet", "confidence": 0.92, "bbox": [11.0, 10.0, 49.0, 50.0]}]
+    pred_tp = [
+        {
+            "class_id": 0,
+            "class_name": "helmet",
+            "confidence": 0.92,
+            "bbox": [11.0, 10.0, 49.0, 50.0],
+        }
+    ]
     errs_tp = analyzer.analyze_image("img_tp", "img_tp.jpg", gt_tp, pred_tp)
     assert len(errs_tp) == 0
 
     # 2. False Positive (Pred with no GT)
     gt_fp = []
-    pred_fp = [{"class_id": 1, "class_name": "vest", "confidence": 0.84, "bbox": [100.0, 100.0, 200.0, 300.0]}]
+    pred_fp = [
+        {
+            "class_id": 1,
+            "class_name": "vest",
+            "confidence": 0.84,
+            "bbox": [100.0, 100.0, 200.0, 300.0],
+        }
+    ]
     errs_fp = analyzer.analyze_image("img_fp", "img_fp.jpg", gt_fp, pred_fp)
     assert len(errs_fp) == 1
     assert errs_fp[0].error_type == ErrorCategory.FALSE_POSITIVE
@@ -40,14 +54,28 @@ def test_synthetic_evaluation_error_categorization():
 
     # 4. Wrong Class / Misclassification (Matched spatial box with wrong class)
     gt_wc = [{"class_id": 0, "class_name": "helmet", "bbox": [10.0, 10.0, 50.0, 50.0]}]
-    pred_wc = [{"class_id": 3, "class_name": "gloves", "confidence": 0.77, "bbox": [10.0, 10.0, 50.0, 50.0]}]
+    pred_wc = [
+        {
+            "class_id": 3,
+            "class_name": "gloves",
+            "confidence": 0.77,
+            "bbox": [10.0, 10.0, 50.0, 50.0],
+        }
+    ]
     errs_wc = analyzer.analyze_image("img_wc", "img_wc.jpg", gt_wc, pred_wc)
     assert len(errs_wc) >= 1
     assert any(e.error_type == ErrorCategory.MISCLASSIFICATION for e in errs_wc)
 
     # 5. Poor Localization (Sub-threshold IoU 0.1 <= IoU < 0.5)
     gt_loc = [{"class_id": 0, "class_name": "helmet", "bbox": [0.0, 0.0, 100.0, 100.0]}]
-    pred_loc = [{"class_id": 0, "class_name": "helmet", "confidence": 0.80, "bbox": [50.0, 0.0, 150.0, 100.0]}]
+    pred_loc = [
+        {
+            "class_id": 0,
+            "class_name": "helmet",
+            "confidence": 0.80,
+            "bbox": [50.0, 0.0, 150.0, 100.0],
+        }
+    ]
     errs_loc = analyzer.analyze_image("img_loc", "img_loc.jpg", gt_loc, pred_loc)
     assert any(e.error_type == ErrorCategory.POOR_LOCALIZATION for e in errs_loc)
 

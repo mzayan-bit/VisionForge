@@ -34,7 +34,9 @@ class CreateVideoRunRequest(BaseModel):
     sampling_mode: FrameSamplingMode = Field(
         default=FrameSamplingMode.EVERY_2ND_FRAME, description="Frame sampling stride mode"
     )
-    custom_stride: int = Field(default=2, ge=1, le=60, description="Custom sampling stride interval")
+    custom_stride: int = Field(
+        default=2, ge=1, le=60, description="Custom sampling stride interval"
+    )
 
 
 class CreateVideoSessionRequest(BaseModel):

@@ -335,7 +335,9 @@ class VisualSearchEngine:
                 continue
             if filter_video_id and asset.source_video_id != filter_video_id:
                 continue
-            if filter_class_name and (not asset.class_name or asset.class_name.lower() != filter_class_name.lower()):
+            if filter_class_name and (
+                not asset.class_name or asset.class_name.lower() != filter_class_name.lower()
+            ):
                 continue
             if filter_event_type and asset.metadata.get("event_type") != filter_event_type:
                 continue
@@ -348,7 +350,9 @@ class VisualSearchEngine:
             elif asset.asset_type == VisualAssetType.OBJECT_CROP and asset.source_video_id:
                 t_sec = asset.timestamp_sec or 0.0
                 tr_id = asset.track_id or 1
-                action_link = f"/video-lab?video={asset.source_video_id}&seek={t_sec:.1f}&track={tr_id}"
+                action_link = (
+                    f"/video-lab?video={asset.source_video_id}&seek={t_sec:.1f}&track={tr_id}"
+                )
             elif asset.asset_type == VisualAssetType.EVENT_FRAME and asset.source_video_id:
                 t_sec = asset.timestamp_sec or 0.0
                 action_link = f"/video-lab?video={asset.source_video_id}&seek={t_sec:.1f}"

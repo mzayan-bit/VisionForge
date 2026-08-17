@@ -77,9 +77,7 @@ class SignalWeights(BaseModel):
     novelty: float = Field(
         default=0.00, ge=0.0, le=1.0, description="Embedding space distance novelty weight"
     )
-    quality: float = Field(
-        default=0.00, ge=0.0, le=1.0, description="Image quality signal weight"
-    )
+    quality: float = Field(default=0.00, ge=0.0, le=1.0, description="Image quality signal weight")
 
 
 class SampleSignals(BaseModel):
@@ -111,11 +109,19 @@ class CandidateExplanation(BaseModel):
     """Evidence-based explanation of why a sample was prioritized for review."""
 
     composite_priority: float = Field(description="Final composite priority [0.0, 1.0]")
-    uncertainty_contribution: float = Field(description="Contribution from model uncertainty margin")
-    diversity_contribution: float = Field(description="Contribution from visual representation diversity")
+    uncertainty_contribution: float = Field(
+        description="Contribution from model uncertainty margin"
+    )
+    diversity_contribution: float = Field(
+        description="Contribution from visual representation diversity"
+    )
     failure_contribution: float = Field(description="Contribution from benchmark error relevance")
-    class_rarity_flag: bool = Field(default=False, description="Flagged if belongs to under-represented class")
-    model_disagreement_flag: bool = Field(default=False, description="Flagged if baseline and candidate disagree")
+    class_rarity_flag: bool = Field(
+        default=False, description="Flagged if belongs to under-represented class"
+    )
+    model_disagreement_flag: bool = Field(
+        default=False, description="Flagged if baseline and candidate disagree"
+    )
     plain_text_reasons: list[str] = Field(
         default_factory=list, description="Bullet-point plain language explanations for researcher"
     )
@@ -140,7 +146,9 @@ class CandidateSampleDetail(BaseModel):
     )
     predicted_class: str | None = Field(default=None, description="Top predicted class")
     confidence: float | None = Field(default=None, description="Top prediction confidence")
-    iou: float | None = Field(default=None, description="Intersection over Union with GT if available")
+    iou: float | None = Field(
+        default=None, description="Intersection over Union with GT if available"
+    )
     similar_sample_ids: list[str] = Field(
         default_factory=list, description="Nearest neighbor sample IDs from visual memory"
     )
@@ -186,14 +194,20 @@ class ActiveLearningCycle(BaseModel):
     cycle_id: str = Field(description="Unique cycle ID ('al_cycle_...')")
     name: str = Field(description="Descriptive cycle name")
     dataset_id: str = Field(description="Source dataset identifier")
-    dataset_version: str = Field(default="v1.0.0", description="Input dataset version tag (e.g. 'v12')")
+    dataset_version: str = Field(
+        default="v1.0.0", description="Input dataset version tag (e.g. 'v12')"
+    )
     model_id: str = Field(description="Target model identifier (e.g. 'yolo11s.pt')")
     model_version: str = Field(default="1.0.0", description="Model version tag")
     candidate_pool_id: str = Field(default="pool_01", description="Candidate image pool identifier")
     candidate_pool_size: int = Field(default=0, description="Total eligible candidate pool size")
-    strategy: SelectionStrategy = Field(default=SelectionStrategy.HYBRID, description="Selection strategy")
+    strategy: SelectionStrategy = Field(
+        default=SelectionStrategy.HYBRID, description="Selection strategy"
+    )
     budget: int = Field(default=50, ge=1, le=500, description="Exact human review sample budget")
-    weights: SignalWeights = Field(default_factory=SignalWeights, description="Signal combination weights")
+    weights: SignalWeights = Field(
+        default_factory=SignalWeights, description="Signal combination weights"
+    )
     selected_samples: list[CandidateSampleDetail] = Field(
         default_factory=list, description="Prioritized candidates selected within budget"
     )
@@ -245,7 +259,9 @@ class ActiveLearningCycleHistoryItem(BaseModel):
     budget: int = Field(description="Configured review budget")
     map50_before: float | None = Field(default=None, description="Baseline mAP@50")
     map50_after: float | None = Field(default=None, description="Retrained mAP@50")
-    delta_map50: float | None = Field(default=None, description="Empirical mAP@50 gain (after - before)")
+    delta_map50: float | None = Field(
+        default=None, description="Empirical mAP@50 gain (after - before)"
+    )
     created_at: str = Field(description="Cycle creation ISO timestamp")
 
 
@@ -253,8 +269,12 @@ class StoppingCriteriaConfig(BaseModel):
     """Researcher-configurable criteria for terminating active learning iterations."""
 
     max_cycles: int = Field(default=5, ge=1, le=50, description="Maximum iterations")
-    budget_per_cycle: int = Field(default=50, ge=1, le=500, description="Samples reviewed per cycle")
-    target_map50: float = Field(default=0.85, ge=0.0, le=1.0, description="Target performance threshold")
+    budget_per_cycle: int = Field(
+        default=50, ge=1, le=500, description="Samples reviewed per cycle"
+    )
+    target_map50: float = Field(
+        default=0.85, ge=0.0, le=1.0, description="Target performance threshold"
+    )
     min_improvement_threshold: float = Field(
         default=0.005, ge=0.0, le=0.1, description="Minimum acceptable mAP delta before stopping"
     )
@@ -271,7 +291,9 @@ class ReviewDecisionRequest(BaseModel):
     cycle_id: str | None = Field(default=None, description="Active learning cycle ID")
     run_id: str | None = Field(default=None, description="Legacy run ID")
     image_id: str = Field(description="Sample image ID")
-    decision: ReviewDecisionType | None = Field(default=None, description="Review decision taxonomy")
+    decision: ReviewDecisionType | None = Field(
+        default=None, description="Review decision taxonomy"
+    )
     status: ReviewStatus | None = Field(default=None, description="Legacy review status")
     reviewer_id: str = Field(default="Researcher", description="Reviewer identity")
     ground_truth_class: str | None = Field(default=None, description="Corrected class")
@@ -331,7 +353,9 @@ class StrategyComparisonResult(BaseModel):
     model_id: str = Field(description="Evaluated model ID")
     strategy_a: SelectionStrategy = Field(description="Strategy A")
     strategy_b: SelectionStrategy = Field(description="Strategy B")
-    overlap_count: int = Field(description="Number of identical samples selected by both strategies")
+    overlap_count: int = Field(
+        description="Number of identical samples selected by both strategies"
+    )
     unique_a_count: int = Field(description="Samples unique to Strategy A")
     unique_b_count: int = Field(description="Samples unique to Strategy B")
     diversity_delta: float = Field(description="Visual coverage diversity difference")
@@ -368,7 +392,9 @@ class ActiveLearningIteration(BaseModel):
     new_dataset_version: str = Field(description="New dataset version tag (D1)")
     retrained_run_id: str = Field(description="Controlled retraining run ID (Run M1)")
     retrained_model_id: str = Field(description="Retrained model ID (M1)")
-    retrained_evaluation_id: str = Field(description="Retrained evaluation ID on untouched test split (E1)")
+    retrained_evaluation_id: str = Field(
+        description="Retrained evaluation ID on untouched test split (E1)"
+    )
     map50_delta: MetricDelta = Field(description="mAP@50 delta telemetry")
     map50_95_delta: MetricDelta = Field(description="mAP@50:95 delta telemetry")
     precision_delta: MetricDelta = Field(description="Precision delta telemetry")
@@ -385,5 +411,9 @@ class ExecuteLoopRequest(BaseModel):
 
     baseline_dataset_id: str = Field(default="safety_v2")
     baseline_model_id: str = Field(default="yolo11s.pt")
-    active_learning_run_id: str = Field(description="Active learning run ID containing reviewed samples")
-    new_version_tag: str | None = Field(default=None, description="Optional new dataset version tag (e.g. v2.1)")
+    active_learning_run_id: str = Field(
+        description="Active learning run ID containing reviewed samples"
+    )
+    new_version_tag: str | None = Field(
+        default=None, description="Optional new dataset version tag (e.g. v2.1)"
+    )

@@ -95,7 +95,9 @@ def test_partition_dataset_seed_reproducibility():
 def test_partition_dataset_leakage_safety():
     """Verify all members of a leakage group land in the SAME split partition."""
     records = [
-        VisualMemoryRecord(id=f"rec_{i}", embedding=[0.1] * 768, image_metadata={"width": 200, "height": 200})
+        VisualMemoryRecord(
+            id=f"rec_{i}", embedding=[0.1] * 768, image_metadata={"width": 200, "height": 200}
+        )
         for i in range(10)
     ]
     # Group rec_0, rec_1, rec_2 together
@@ -110,7 +112,11 @@ def test_partition_dataset_leakage_safety():
 
 def test_partition_dataset_invalid_ratios():
     """Verify InvalidSplitRatioError when ratios sum != 1.0."""
-    records = [VisualMemoryRecord(id="sample_01", embedding=[0.1] * 768, image_metadata={"width": 100, "height": 100})]
+    records = [
+        VisualMemoryRecord(
+            id="sample_01", embedding=[0.1] * 768, image_metadata={"width": 100, "height": 100}
+        )
+    ]
     config = SplitConfig(train_ratio=0.50, val_ratio=0.50, test_ratio=0.50)  # Sums to 1.5
 
     with pytest.raises(InvalidSplitRatioError):

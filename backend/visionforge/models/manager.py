@@ -102,9 +102,7 @@ class ModelManager:
 
     # ─── Installation ────────────────────────────────────────────────
 
-    def prepare_install(
-        self, metadata: InstalledModelMetadata
-    ) -> InstalledModelMetadata:
+    def prepare_install(self, metadata: InstalledModelMetadata) -> InstalledModelMetadata:
         """Validate and prepare a model for installation (pre-download phase).
 
         Returns the metadata with status updated to INSTALLING and install_path set.

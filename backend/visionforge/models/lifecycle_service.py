@@ -187,7 +187,10 @@ class ModelLifecycleService:
         pipeline.current_stage = next_stage
         pipeline.updated_at = datetime.now(UTC).isoformat()
 
-        if next_stage == PipelineStage.DEPLOYMENT and pipeline.stages[next_stage.value].status == StageExecutionState.COMPLETED:
+        if (
+            next_stage == PipelineStage.DEPLOYMENT
+            and pipeline.stages[next_stage.value].status == StageExecutionState.COMPLETED
+        ):
             pipeline.status = PipelineStatus.COMPLETED
             pipeline.completed_at = datetime.now(UTC).isoformat()
 
@@ -332,7 +335,11 @@ class ModelLifecycleService:
                 stage=PipelineStage.MODEL_COMPARISON,
                 label="Comparison: Baseline M0 vs Candidate M1 (+0.033 mAP Gain)",
                 artifact_type="comparison_delta",
-                properties={"baseline_map50": 0.829, "candidate_map50": 0.862, "delta_map50": 0.033},
+                properties={
+                    "baseline_map50": 0.829,
+                    "candidate_map50": 0.862,
+                    "delta_map50": 0.033,
+                },
                 parent_node_ids=[f"{pipeline_id}_reg"],
             )
         )
@@ -431,7 +438,9 @@ class ModelLifecycleService:
             }
 
         elif stage == PipelineStage.TRAINING_RUN:
-            detail.summary = "Completed 50/50 training epochs. Training loss converged from 1.482 to 0.042."
+            detail.summary = (
+                "Completed 50/50 training epochs. Training loss converged from 1.482 to 0.042."
+            )
             detail.metrics = {
                 "epochs_completed": 50,
                 "final_box_loss": 0.021,

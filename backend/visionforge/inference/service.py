@@ -131,7 +131,9 @@ class InferenceHistoryStore:
             "saved_at": datetime.now(UTC).isoformat(),
             "records": [r.model_dump() for r in self._records.values()],
         }
-        self._history_file.write_text(json.dumps(serializable, indent=2, default=str), encoding="utf-8")
+        self._history_file.write_text(
+            json.dumps(serializable, indent=2, default=str), encoding="utf-8"
+        )
 
     def load_from_disk(self) -> None:
         if not self._history_file.is_file():
@@ -169,7 +171,9 @@ class InferenceService:
         self._lifecycle = ModelLifecycleManager()
         self._history = InferenceHistoryStore(self._base_dir)
 
-    # ─── Model Discovery ─────────────────────────────────────────────
+    def get_history(self, limit: int = 50) -> list[InferenceResult]:
+        """Retrieve recent inference history records."""
+        return self._history.list_records(limit=limit)
 
     def list_available_models(self) -> list[InferenceModelDescriptor]:
         """Return all inference-ready models (default base models + registered trained models)."""
@@ -212,7 +216,9 @@ class InferenceService:
                         checkpoint_path=cp,
                         status=self._lifecycle.get_state(meta.name),
                         is_available=exists or True,
-                        unavailability_reason=None if (exists or True) else f"Checkpoint not found at '{cp}'",
+                        unavailability_reason=None
+                        if (exists or True)
+                        else f"Checkpoint not found at '{cp}'",
                     )
                 )
         except Exception as exc:
@@ -245,7 +251,9 @@ class InferenceService:
                             precision=m_p,
                             recall=m_r,
                             is_available=exists or True,
-                            unavailability_reason=None if (exists or True) else f"Checkpoint file missing: '{cp_path}'",
+                            unavailability_reason=None
+                            if (exists or True)
+                            else f"Checkpoint file missing: '{cp_path}'",
                         )
                     )
         except Exception as exc:
@@ -326,7 +334,12 @@ class InferenceService:
             )
             dt_ms = round((time.perf_counter() - t0) * 1000.0, 2)
 
-            if results and len(results) > 0 and hasattr(results[0], "boxes") and results[0].boxes is not None:
+            if (
+                results
+                and len(results) > 0
+                and hasattr(results[0], "boxes")
+                and results[0].boxes is not None
+            ):
                 boxes = results[0].boxes
                 names = getattr(model, "names", {})
 
@@ -384,7 +397,11 @@ class InferenceService:
         # Build Summary
         classes_detected = sorted(list({p.class_name for p in predictions}))
         max_conf = max([p.confidence for p in predictions], default=0.0)
-        avg_conf = round(sum([p.confidence for p in predictions]) / len(predictions), 4) if predictions else 0.0
+        avg_conf = (
+            round(sum([p.confidence for p in predictions]) / len(predictions), 4)
+            if predictions
+            else 0.0
+        )
 
         summary = PredictionSummary(
             total_detections=len(predictions),
@@ -469,7 +486,9 @@ class InferenceService:
         """Execute multi-pass inference benchmarking to measure latency distribution and throughput."""
         descriptor = self.get_model_descriptor(config.model_id)
         if not descriptor.is_available:
-            raise ModelNotFoundError(f"Cannot run benchmark: Model checkpoint for '{config.model_id}' is unavailable.")
+            raise ModelNotFoundError(
+                f"Cannot run benchmark: Model checkpoint for '{config.model_id}' is unavailable."
+            )
 
         # Prepare dummy sample image
         cache_root = Path(get_settings().model_cache_dir).expanduser().resolve()
@@ -559,7 +578,15 @@ class InferenceService:
                 w, h = img_rgb.size
 
                 # Vibrant color palette for distinct classes
-                colors = ["#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899", "#06B6D4"]
+                colors = [
+                    "#3B82F6",
+                    "#10B981",
+                    "#F59E0B",
+                    "#EF4444",
+                    "#8B5CF6",
+                    "#EC4899",
+                    "#06B6D4",
+                ]
 
                 for pred in predictions:
                     color = colors[pred.class_id % len(colors)]

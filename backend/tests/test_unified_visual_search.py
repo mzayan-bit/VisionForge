@@ -79,7 +79,11 @@ def create_synthetic_indexed_environment(service: VisualSearchService) -> None:
             id="rec_obj_person_01",
             embedding=vec_c,
             dimension=768,
-            image_metadata={"asset_type": "OBJECT_CROP", "video_id": "vid_test_01", "class_name": "person"},
+            image_metadata={
+                "asset_type": "OBJECT_CROP",
+                "video_id": "vid_test_01",
+                "class_name": "person",
+            },
         )
     )
     service.register_asset(
@@ -176,10 +180,10 @@ def test_near_duplicate_candidate_discovery():
     assert dups.duplicate_pairs_found >= 1
     top_pair = dups.pairs[0]
     assert top_pair.similarity_score >= 0.95
-    assert (
-        top_pair.asset_a.embedding_id in ("rec_frame_01", "rec_frame_02_dup")
-        and top_pair.asset_b.embedding_id in ("rec_frame_01", "rec_frame_02_dup")
-    )
+    assert top_pair.asset_a.embedding_id in (
+        "rec_frame_01",
+        "rec_frame_02_dup",
+    ) and top_pair.asset_b.embedding_id in ("rec_frame_01", "rec_frame_02_dup")
 
 
 def test_video_run_asset_indexing_and_api():
@@ -224,7 +228,9 @@ def test_video_run_asset_indexing_and_api():
         video_id="sample_traffic_01",
         model_id="yolo11s.pt",
         tracker_name="ByteTrack",
-        sampling_config=FrameSamplingConfig(mode="EVERY_FRAME", sample_interval=1, total_sampled_frames=3),
+        sampling_config=FrameSamplingConfig(
+            mode="EVERY_FRAME", sample_interval=1, total_sampled_frames=3
+        ),
         duration_sec=3.0,
         processed_frames=3,
         total_detections=1,

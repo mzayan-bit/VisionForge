@@ -61,12 +61,24 @@ class CategoryHealthItem(BaseModel):
 class DatasetHealthSummary(BaseModel):
     """Transparent multi-dimensional dataset health scorecard."""
 
-    overall_integrity: CategoryHealthItem = Field(description="File readability and format compliance")
-    annotation_quality: CategoryHealthItem = Field(description="Bounding box and label geometry integrity")
-    class_balance: CategoryHealthItem = Field(description="Category distribution parity and rare classes")
-    visual_diversity: CategoryHealthItem = Field(description="Embedding space dispersion and coverage")
-    potential_leakage: CategoryHealthItem = Field(description="Cross-split duplication and contamination risk")
-    model_difficulty: CategoryHealthItem = Field(description="Hard sample count and failure density")
+    overall_integrity: CategoryHealthItem = Field(
+        description="File readability and format compliance"
+    )
+    annotation_quality: CategoryHealthItem = Field(
+        description="Bounding box and label geometry integrity"
+    )
+    class_balance: CategoryHealthItem = Field(
+        description="Category distribution parity and rare classes"
+    )
+    visual_diversity: CategoryHealthItem = Field(
+        description="Embedding space dispersion and coverage"
+    )
+    potential_leakage: CategoryHealthItem = Field(
+        description="Cross-split duplication and contamination risk"
+    )
+    model_difficulty: CategoryHealthItem = Field(
+        description="Hard sample count and failure density"
+    )
 
 
 class ClassDistributionItem(BaseModel):
@@ -75,12 +87,22 @@ class ClassDistributionItem(BaseModel):
     class_id: int = Field(description="Zero-indexed class ID")
     class_name: str = Field(description="Human-readable class name")
     sample_count: int = Field(description="Number of images containing this class")
-    sample_percentage: float = Field(description="Percentage of dataset images containing this class")
+    sample_percentage: float = Field(
+        description="Percentage of dataset images containing this class"
+    )
     annotation_count: int = Field(description="Total bounding box annotations of this class")
-    avg_annotations_per_image: float = Field(description="Average instances per image where present")
-    is_rare_class: bool = Field(default=False, description="Flagged if under-represented (< 5% of total)")
-    is_dominant_class: bool = Field(default=False, description="Flagged if dominant (> 40% of total)")
-    split_counts: dict[str, int] = Field(default_factory=dict, description="Annotation counts per split partition")
+    avg_annotations_per_image: float = Field(
+        description="Average instances per image where present"
+    )
+    is_rare_class: bool = Field(
+        default=False, description="Flagged if under-represented (< 5% of total)"
+    )
+    is_dominant_class: bool = Field(
+        default=False, description="Flagged if dominant (> 40% of total)"
+    )
+    split_counts: dict[str, int] = Field(
+        default_factory=dict, description="Annotation counts per split partition"
+    )
 
 
 class ImageStatistics(BaseModel):
@@ -93,8 +115,12 @@ class ImageStatistics(BaseModel):
     max_height: int = Field(description="Maximum image height in pixels")
     mean_height: float = Field(description="Mean image height in pixels")
     mean_aspect_ratio: float = Field(description="Mean width / height aspect ratio")
-    format_distribution: dict[str, int] = Field(default_factory=dict, description="Image file extensions breakdown")
-    resolution_bins: dict[str, int] = Field(default_factory=dict, description="Counts by resolution tier")
+    format_distribution: dict[str, int] = Field(
+        default_factory=dict, description="Image file extensions breakdown"
+    )
+    resolution_bins: dict[str, int] = Field(
+        default_factory=dict, description="Counts by resolution tier"
+    )
     total_size_bytes: int = Field(default=0, description="Total disk footprint of dataset images")
 
 
@@ -104,9 +130,12 @@ class AnnotationStatistics(BaseModel):
     total_boxes: int = Field(description="Total object bounding boxes")
     mean_boxes_per_image: float = Field(description="Average objects per image")
     max_boxes_per_image: int = Field(description="Maximum objects in a single image")
-    mean_box_relative_area: float = Field(description="Mean relative box area (box_area / image_area)")
+    mean_box_relative_area: float = Field(
+        description="Mean relative box area (box_area / image_area)"
+    )
     size_distribution: dict[str, int] = Field(
-        default_factory=dict, description="Box size tiers: 'tiny' (<0.5%), 'small' (0.5-2%), 'medium' (2-15%), 'large' (>15%)"
+        default_factory=dict,
+        description="Box size tiers: 'tiny' (<0.5%), 'small' (0.5-2%), 'medium' (2-15%), 'large' (>15%)",
     )
 
 
@@ -124,7 +153,9 @@ class QualityIssueItem(BaseModel):
 
     issue_id: str = Field(description="Unique issue identifier")
     sample_id: str = Field(description="Associated image sample identifier")
-    issue_type: str = Field(description="'IMAGE_QUALITY', 'ANNOTATION_QUALITY', 'DUPLICATE', 'LEAKAGE', 'OUTLIER'")
+    issue_type: str = Field(
+        description="'IMAGE_QUALITY', 'ANNOTATION_QUALITY', 'DUPLICATE', 'LEAKAGE', 'OUTLIER'"
+    )
     flag: str = Field(description="Diagnostic flag name")
     severity: str = Field(default="WARNING", description="'WARNING' or 'CRITICAL'")
     message: str = Field(description="Transparent explanation of the issue")
@@ -132,7 +163,9 @@ class QualityIssueItem(BaseModel):
     split: str = Field(default="train", description="Dataset split containing this sample")
     class_name: str | None = Field(default=None, description="Class name if annotation defect")
     bbox: list[float] | None = Field(default=None, description="Bounding box if annotation defect")
-    review_status: str = Field(default="UNREVIEWED", description="'UNREVIEWED', 'ACCEPTED', 'REJECTED', 'CORRECTED'")
+    review_status: str = Field(
+        default="UNREVIEWED", description="'UNREVIEWED', 'ACCEPTED', 'REJECTED', 'CORRECTED'"
+    )
     detected_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
 
 
@@ -147,7 +180,9 @@ class LeakageCandidatePair(BaseModel):
     sample_b_split: str = Field(description="Second sample split (e.g. 'test')")
     sample_b_path: str = Field(description="Second sample path")
     cross_split_type: str = Field(description="'train_to_test', 'train_to_val', 'val_to_test'")
-    similarity_score: float = Field(description="Cosine similarity score or 1.0 for exact hash match")
+    similarity_score: float = Field(
+        description="Cosine similarity score or 1.0 for exact hash match"
+    )
     match_type: str = Field(description="'EXACT_HASH' or 'VISUAL_SIMILARITY'")
     recommendation: str = Field(description="Actionable curation guidance for researcher")
 
@@ -158,13 +193,22 @@ class HardSampleItem(BaseModel):
     sample_id: str = Field(description="Sample identifier")
     image_path: str = Field(description="Path to image asset")
     split: str = Field(description="Dataset split partition")
-    prioritization_score: float = Field(description="Interpretable composite difficulty score [0.0, 1.0]")
-    signals: dict[str, float] = Field(
-        default_factory=dict, description="Component signal scores (eval_failure, confidence_gap, isolation)"
+    prioritization_score: float = Field(
+        description="Interpretable composite difficulty score [0.0, 1.0]"
     )
-    failure_reasons: list[str] = Field(default_factory=list, description="Descriptive list of failure causes")
-    ground_truth_classes: list[str] = Field(default_factory=list, description="Ground truth classes present")
-    predicted_classes: list[str] = Field(default_factory=list, description="Model predicted classes")
+    signals: dict[str, float] = Field(
+        default_factory=dict,
+        description="Component signal scores (eval_failure, confidence_gap, isolation)",
+    )
+    failure_reasons: list[str] = Field(
+        default_factory=list, description="Descriptive list of failure causes"
+    )
+    ground_truth_classes: list[str] = Field(
+        default_factory=list, description="Ground truth classes present"
+    )
+    predicted_classes: list[str] = Field(
+        default_factory=list, description="Model predicted classes"
+    )
 
 
 class CurationDecision(BaseModel):
@@ -194,12 +238,18 @@ class DatasetProfile(BaseModel):
     total_samples: int = Field(description="Total image samples in dataset")
     total_annotations: int = Field(description="Total bounding box annotations")
     total_classes: int = Field(description="Total distinct category classes")
-    class_distribution: list[ClassDistributionItem] = Field(description="Detailed class representation statistics")
+    class_distribution: list[ClassDistributionItem] = Field(
+        description="Detailed class representation statistics"
+    )
     split_distribution: dict[str, int] = Field(description="Sample counts per split partition")
     split_percentages: dict[str, float] = Field(description="Percentage distribution across splits")
     image_statistics: ImageStatistics = Field(description="Resolution and format telemetry")
-    annotation_statistics: AnnotationStatistics = Field(description="Bounding box geometry telemetry")
-    class_cooccurrence: list[ClassCooccurrence] = Field(description="Pairwise class co-occurrence frequencies")
+    annotation_statistics: AnnotationStatistics = Field(
+        description="Bounding box geometry telemetry"
+    )
+    class_cooccurrence: list[ClassCooccurrence] = Field(
+        description="Pairwise class co-occurrence frequencies"
+    )
     health_summary: DatasetHealthSummary = Field(description="Categorical health scorecard")
     profile_generated_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
 
@@ -214,7 +264,9 @@ class DatasetVersionRecord(BaseModel):
     changes_summary: str = Field(description="Summary of additions, removals, and corrections")
     total_samples: int = Field(description="Total sample count in this version")
     total_annotations: int = Field(description="Total annotation count in this version")
-    review_decisions_count: int = Field(default=0, description="Total curation review decisions applied")
+    review_decisions_count: int = Field(
+        default=0, description="Total curation review decisions applied"
+    )
     created_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
 
 
@@ -224,10 +276,18 @@ class DatasetDiffResult(BaseModel):
     dataset_id: str = Field(description="Dataset identifier")
     version_a: str = Field(description="Baseline version identifier")
     version_b: str = Field(description="Comparison version identifier")
-    samples_added: list[str] = Field(default_factory=list, description="Samples present in B but not A")
-    samples_removed: list[str] = Field(default_factory=list, description="Samples present in A but not B")
-    classes_added: list[str] = Field(default_factory=list, description="Classes introduced in version B")
-    classes_removed: list[str] = Field(default_factory=list, description="Classes deprecated in version B")
+    samples_added: list[str] = Field(
+        default_factory=list, description="Samples present in B but not A"
+    )
+    samples_removed: list[str] = Field(
+        default_factory=list, description="Samples present in A but not B"
+    )
+    classes_added: list[str] = Field(
+        default_factory=list, description="Classes introduced in version B"
+    )
+    classes_removed: list[str] = Field(
+        default_factory=list, description="Classes deprecated in version B"
+    )
     annotations_count_delta: int = Field(description="Net change in total bounding boxes")
     leakage_pairs_delta: int = Field(description="Net change in detected leakage pairs")
     class_distribution_deltas: dict[str, int] = Field(

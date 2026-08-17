@@ -40,7 +40,9 @@ class CreateCycleRequest(BaseModel):
     dataset_version: str = Field(default="v1.0.0", description="Source dataset version tag")
     model_id: str = Field(default="yolo11s.pt", description="Target model identifier")
     model_version: str = Field(default="1.0.0", description="Model version tag")
-    candidate_pool_id: str = Field(default="pool_unlabeled_site_cctv", description="Candidate pool ID")
+    candidate_pool_id: str = Field(
+        default="pool_unlabeled_site_cctv", description="Candidate pool ID"
+    )
     strategy: SelectionStrategy = Field(
         default=SelectionStrategy.HYBRID, description="Selection strategy"
     )
@@ -71,6 +73,7 @@ def _get_service():
 
 # ─── Active Learning Cycles ────────────────────────────────────────────
 
+
 @router.post(
     "/cycles",
     response_model=APIResponse[ActiveLearningCycle],
@@ -92,7 +95,10 @@ def create_active_learning_cycle(payload: CreateCycleRequest) -> APIResponse[Act
             budget=payload.budget,
             weights=payload.weights,
         )
-        return success_response(data=cycle, message=f"Created active learning cycle '{cycle.cycle_id}' with {len(cycle.selected_samples)} candidates")
+        return success_response(
+            data=cycle,
+            message=f"Created active learning cycle '{cycle.cycle_id}' with {len(cycle.selected_samples)} candidates",
+        )
     except TestSetProtectionError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -110,7 +116,9 @@ def list_active_learning_cycles(
     """Retrieve list of active learning cycles."""
     service = _get_service()
     cycles = service.list_cycles(dataset_id=dataset_id, limit=limit, offset=offset)
-    return success_response(data=cycles, message=f"Retrieved {len(cycles)} active learning cycle(s)")
+    return success_response(
+        data=cycles, message=f"Retrieved {len(cycles)} active learning cycle(s)"
+    )
 
 
 @router.get(
@@ -124,7 +132,9 @@ def get_cycle_history(
     """Retrieve longitudinal cycle history tracking before/after mAP progression."""
     service = _get_service()
     history = service.get_cycle_history(dataset_id=dataset_id)
-    return success_response(data=history, message=f"Retrieved {len(history)} active learning cycle milestone(s)")
+    return success_response(
+        data=history, message=f"Retrieved {len(history)} active learning cycle milestone(s)"
+    )
 
 
 @router.get(
@@ -159,7 +169,10 @@ def select_candidates_for_cycle(
             strategy=payload.strategy,
             weights=payload.weights,
         )
-        return success_response(data=cycle, message=f"Selected {len(cycle.selected_samples)} samples under {cycle.strategy.value} strategy")
+        return success_response(
+            data=cycle,
+            message=f"Selected {len(cycle.selected_samples)} samples under {cycle.strategy.value} strategy",
+        )
     except ActiveLearningRunNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -184,7 +197,10 @@ def submit_review_decision(
             notes=payload.notes,
             bbox_corrections=payload.bbox_corrections,
         )
-        return success_response(data=rec, message=f"Recorded review decision '{payload.decision.value}' for {payload.image_id}")
+        return success_response(
+            data=rec,
+            message=f"Recorded review decision '{payload.decision.value}' for {payload.image_id}",
+        )
     except ActiveLearningRunNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -198,7 +214,9 @@ def get_sample_consensus(cycle_id: str, sample_id: str) -> APIResponse[SampleRev
     """Evaluate multi-reviewer agreement for a specific sample."""
     service = _get_service()
     consensus = service.get_sample_consensus(sample_id)
-    return success_response(data=consensus, message=f"Consensus evaluated: {consensus.consensus_status.value}")
+    return success_response(
+        data=consensus, message=f"Consensus evaluated: {consensus.consensus_status.value}"
+    )
 
 
 @router.post(
@@ -217,7 +235,9 @@ def commit_cycle_dataset_version(
             new_version_tag=payload.new_version_tag,
             changes_summary=payload.changes_summary,
         )
-        return success_response(data=cycle, message=f"Committed new dataset version '{payload.new_version_tag}'")
+        return success_response(
+            data=cycle, message=f"Committed new dataset version '{payload.new_version_tag}'"
+        )
     except ActiveLearningRunNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -225,7 +245,9 @@ def commit_cycle_dataset_version(
 class CreateRunRequest(BaseModel):
     dataset_id: str = Field(description="Target dataset identifier")
     model_id: str = Field(default="yolo11s.pt", description="Target model identifier")
-    candidate_paths: list[str] | None = Field(default=None, description="Candidate image file paths")
+    candidate_paths: list[str] | None = Field(
+        default=None, description="Candidate image file paths"
+    )
     strategy: SelectionStrategy = Field(
         default=SelectionStrategy.UNCERTAINTY_DIVERSITY, description="Selection strategy"
     )
@@ -246,6 +268,7 @@ def compare_strategies(payload: StrategyComparisonRequest) -> StrategyComparison
 
 
 # ─── Backward-Compatibility Run Routes ───────────────────────────────
+
 
 @router.post(
     "/runs",

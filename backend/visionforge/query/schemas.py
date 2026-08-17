@@ -71,22 +71,44 @@ class VisualQuery(BaseModel):
     query_id: str = Field(description="Unique query identifier ('vq_...')")
     run_id: str = Field(description="Target VideoInferenceRun ID")
     video_id: str | None = Field(default=None, description="Target Video Asset ID")
-    query_type: QueryType = Field(default=QueryType.EVENT_SEARCH, description="Target query execution type")
-    event_type: str | None = Field(default=None, description="Optional EventType filter (e.g. 'OBJECT_ENTERED_REGION')")
+    query_type: QueryType = Field(
+        default=QueryType.EVENT_SEARCH, description="Target query execution type"
+    )
+    event_type: str | None = Field(
+        default=None, description="Optional EventType filter (e.g. 'OBJECT_ENTERED_REGION')"
+    )
     track_id: int | None = Field(default=None, description="Optional persistent Track ID filter")
-    object_class: str | None = Field(default=None, description="Optional object class name filter (e.g. 'person', 'car')")
-    region_name: str | None = Field(default=None, description="Optional Region ROI name filter (e.g. 'Loading Zone A')")
+    object_class: str | None = Field(
+        default=None, description="Optional object class name filter (e.g. 'person', 'car')"
+    )
+    region_name: str | None = Field(
+        default=None, description="Optional Region ROI name filter (e.g. 'Loading Zone A')"
+    )
     region_id: str | None = Field(default=None, description="Optional Region ROI ID filter")
-    time_range: list[float] | None = Field(default=None, description="[start_sec, end_sec] timestamp window filter")
-    at_timestamp_sec: float | None = Field(default=None, description="Exact timestamp target (e.g. 10.0 for 'at 10 seconds')")
-    min_duration_sec: float | None = Field(default=None, description="Minimum duration threshold filter in seconds")
-    max_duration_sec: float | None = Field(default=None, description="Maximum duration threshold filter in seconds")
-    min_confidence: float | None = Field(default=None, description="Minimum confidence threshold [0.0, 1.0]")
-    aggregation: AggregationType | None = Field(default=None, description="Aggregation function if requested")
+    time_range: list[float] | None = Field(
+        default=None, description="[start_sec, end_sec] timestamp window filter"
+    )
+    at_timestamp_sec: float | None = Field(
+        default=None, description="Exact timestamp target (e.g. 10.0 for 'at 10 seconds')"
+    )
+    min_duration_sec: float | None = Field(
+        default=None, description="Minimum duration threshold filter in seconds"
+    )
+    max_duration_sec: float | None = Field(
+        default=None, description="Maximum duration threshold filter in seconds"
+    )
+    min_confidence: float | None = Field(
+        default=None, description="Minimum confidence threshold [0.0, 1.0]"
+    )
+    aggregation: AggregationType | None = Field(
+        default=None, description="Aggregation function if requested"
+    )
     sort_by: SortBy = Field(default=SortBy.TIMESTAMP, description="Result sorting attribute")
     sort_order: SortOrder = Field(default=SortOrder.ASC, description="Result sorting direction")
     limit: int = Field(default=50, ge=1, le=500, description="Maximum matching records limit")
-    original_text: str | None = Field(default=None, description="Original natural language query string")
+    original_text: str | None = Field(
+        default=None, description="Original natural language query string"
+    )
 
 
 class QueryEvidenceItem(BaseModel):
@@ -96,9 +118,13 @@ class QueryEvidenceItem(BaseModel):
     track_id: int | None = Field(default=None, description="Associated Track ID if applicable")
     timestamp_sec: float = Field(description="Exact timestamp in video timeline (seconds)")
     frame_idx: int = Field(description="Corresponding frame index in video")
-    region_id: str | None = Field(default=None, description="Associated Region ROI ID if applicable")
+    region_id: str | None = Field(
+        default=None, description="Associated Region ROI ID if applicable"
+    )
     description: str = Field(description="Visual evidence verification text")
-    action_link: str = Field(description="Frontend action link (e.g. '/video-lab?seek=5.2&track=4')")
+    action_link: str = Field(
+        description="Frontend action link (e.g. '/video-lab?seek=5.2&track=4')"
+    )
 
 
 class QueryResult(BaseModel):
@@ -106,11 +132,17 @@ class QueryResult(BaseModel):
 
     query_id: str = Field(description="Unique query identifier ('vq_...')")
     original_query: str = Field(description="Original user question string")
-    structured_query: VisualQuery = Field(description="Internal structured query DSL representation")
+    structured_query: VisualQuery = Field(
+        description="Internal structured query DSL representation"
+    )
     status: QueryStatus = Field(description="Execution status")
     result_type: ResultType = Field(description="Result record category")
-    records: list[dict[str, Any]] = Field(default_factory=list, description="Matching structured data records")
-    summary: str = Field(description="Evidence-backed human-readable answer generated ONLY from records")
+    records: list[dict[str, Any]] = Field(
+        default_factory=list, description="Matching structured data records"
+    )
+    summary: str = Field(
+        description="Evidence-backed human-readable answer generated ONLY from records"
+    )
     evidence: list[QueryEvidenceItem] = Field(
         default_factory=list, description="Visual evidence links to video frames"
     )

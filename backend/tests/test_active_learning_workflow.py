@@ -122,7 +122,10 @@ def test_candidate_explanation_generator():
     assert sample.explanation.composite_priority > 0.0
     assert sample.explanation.class_rarity_flag is True
     assert len(sample.explanation.plain_text_reasons) >= 1
-    assert any("uncertainty" in r.lower() or "rare" in r.lower() for r in sample.explanation.plain_text_reasons)
+    assert any(
+        "uncertainty" in r.lower() or "rare" in r.lower()
+        for r in sample.explanation.plain_text_reasons
+    )
 
 
 def test_review_decision_submission_and_state_transitions():

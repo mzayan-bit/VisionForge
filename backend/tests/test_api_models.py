@@ -1,6 +1,5 @@
 """Test model manager API endpoints."""
 
-
 from fastapi.testclient import TestClient
 
 from visionforge.main import app

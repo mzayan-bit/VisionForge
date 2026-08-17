@@ -113,6 +113,7 @@ def test_error_analyzer_low_confidence():
     assert len(errors) == 1
     assert errors[0].error_type == ErrorCategory.LOW_CONFIDENCE
 
+
 def test_benchmark_fairness_validation():
     # Setup mock runs
     run1 = EvaluationRun(
@@ -122,16 +123,16 @@ def test_benchmark_fairness_validation():
         dataset_version="v2",
         split_used="test",
         status=EvaluationStatus.COMPLETED,
-        config=EvaluationConfig()
+        config=EvaluationConfig(),
     )
     run2 = EvaluationRun(
         eval_id="eval_2",
         model_name="rtdetr-l.pt",
         dataset_id="safety_v2",
-        dataset_version="v1", # DIFFERENT VERSION
+        dataset_version="v1",  # DIFFERENT VERSION
         split_used="test",
         status=EvaluationStatus.COMPLETED,
-        config=EvaluationConfig()
+        config=EvaluationConfig(),
     )
 
     svc = EvaluationService()
@@ -140,4 +141,3 @@ def test_benchmark_fairness_validation():
 
     with pytest.raises(ValueError, match="Fair comparison violated"):
         svc.create_benchmark(["eval_1", "eval_2"])
-

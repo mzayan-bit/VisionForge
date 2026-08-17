@@ -139,18 +139,14 @@ def test_manager_prepare_and_finalize_install(
     assert final_meta.disk_size_mb == 0.0
 
 
-def test_manager_duplicate_install(
-    manager: ModelManager, sample_metadata: InstalledModelMetadata
-):
+def test_manager_duplicate_install(manager: ModelManager, sample_metadata: InstalledModelMetadata):
     """Verify duplicate installations are blocked."""
     manager.prepare_install(sample_metadata)
     with pytest.raises(ModelAlreadyExistsError):
         manager.prepare_install(sample_metadata)
 
 
-def test_manager_remove_model(
-    manager: ModelManager, sample_metadata: InstalledModelMetadata
-):
+def test_manager_remove_model(manager: ModelManager, sample_metadata: InstalledModelMetadata):
     """Verify model removal cleans up disk and metadata."""
     manager.prepare_install(sample_metadata)
     model_dir = Path(sample_metadata.install_path)
@@ -168,9 +164,7 @@ def test_manager_remove_model(
         manager.get_model(sample_metadata.name)
 
 
-def test_manager_validation_report(
-    manager: ModelManager, sample_metadata: InstalledModelMetadata
-):
+def test_manager_validation_report(manager: ModelManager, sample_metadata: InstalledModelMetadata):
     """Test diagnostic validation report generation."""
     # Setup healthy model
     manager.prepare_install(sample_metadata)
@@ -194,9 +188,7 @@ def test_manager_validation_report(
     assert "directory missing" in report["errors"][0]
 
 
-def test_manager_list_and_stats(
-    manager: ModelManager, sample_metadata: InstalledModelMetadata
-):
+def test_manager_list_and_stats(manager: ModelManager, sample_metadata: InstalledModelMetadata):
     """Test listing installed models and gathering stats."""
     manager.prepare_install(sample_metadata)
 

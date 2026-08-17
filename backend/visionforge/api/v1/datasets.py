@@ -26,8 +26,12 @@ class CreatePreparationRequest(BaseModel):
     test_ratio: float = Field(default=0.15, ge=0.0, lt=1.0, description="Test set fraction")
     random_seed: int = Field(default=42, ge=0, description="Random seed for 100% reproducibility")
     strategy: SplitStrategy = Field(default=SplitStrategy.RANDOM, description="Split strategy")
-    group_by_field: str | None = Field(default=None, description="Metadata field for group-aware split")
-    stratify_by_field: str | None = Field(default=None, description="Metadata field for stratified split")
+    group_by_field: str | None = Field(
+        default=None, description="Metadata field for group-aware split"
+    )
+    stratify_by_field: str | None = Field(
+        default=None, description="Metadata field for stratified split"
+    )
 
 
 def _get_service() -> DatasetPreparationService:

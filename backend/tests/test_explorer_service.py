@@ -53,9 +53,7 @@ def test_compute_projection_tsne():
 def test_compute_projection_small_dataset():
     """Verify small dataset (N=2) generates safe fallback coordinates without error."""
     matrix = np.array([[1.0] * 768, [0.5] * 768], dtype=np.float32)
-    coords, meta = compute_projection(
-        matrix=matrix, method=ProjectionMethod.PCA, n_components=2
-    )
+    coords, meta = compute_projection(matrix=matrix, method=ProjectionMethod.PCA, n_components=2)
 
     assert coords.shape == (2, 2)
     assert meta.n_components == 2

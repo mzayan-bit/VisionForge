@@ -34,7 +34,17 @@ def compute_iou(bbox1: list[float], bbox2: list[float]) -> float:
 class SingleTrackState:
     """Internal tracker state maintaining history for a single persistent Track ID."""
 
-    def __init__(self, track_id: int, class_name: str, frame_index: int, timestamp_sec: float, bbox: list[float], confidence: float, img_width: int, img_height: int):
+    def __init__(
+        self,
+        track_id: int,
+        class_name: str,
+        frame_index: int,
+        timestamp_sec: float,
+        bbox: list[float],
+        confidence: float,
+        img_width: int,
+        img_height: int,
+    ):
         self.track_id = track_id
         self.class_name = class_name
         self.first_frame = frame_index
@@ -49,7 +59,14 @@ class SingleTrackState:
 
         self.add_trajectory_point(frame_index, timestamp_sec, bbox, img_width, img_height)
 
-    def add_trajectory_point(self, frame_index: int, timestamp_sec: float, bbox: list[float], img_width: int, img_height: int) -> None:
+    def add_trajectory_point(
+        self,
+        frame_index: int,
+        timestamp_sec: float,
+        bbox: list[float],
+        img_width: int,
+        img_height: int,
+    ) -> None:
         x_center = (bbox[0] + bbox[2]) / 2.0
         y_center = (bbox[1] + bbox[3]) / 2.0
         w_px = max(1.0, bbox[2] - bbox[0])
@@ -171,7 +188,9 @@ class ByteTracker:
         timestamp_sec = t_sec
         detections = dets_list
         active_track_ids = [
-            tid for tid, t in self.tracks.items() if t.status in (TrackStatus.ACTIVE, TrackStatus.LOST)
+            tid
+            for tid, t in self.tracks.items()
+            if t.status in (TrackStatus.ACTIVE, TrackStatus.LOST)
         ]
 
         assigned_detections: set[int] = set()

@@ -167,12 +167,16 @@ def test_temporal_query_interpretation():
     interpreter = QueryInterpreter()
 
     # Query 1: Entered region
-    res1 = interpreter.parse_query("What objects entered Zone A?", run_id="vrun_1", active_region_names=["Zone A"])
+    res1 = interpreter.parse_query(
+        "What objects entered Zone A?", run_id="vrun_1", active_region_names=["Zone A"]
+    )
     assert res1.status == QueryStatus.SUCCESS
     assert res1.query.event_type == EventType.OBJECT_ENTERED_REGION
 
     # Query 2: Dwelled in region
-    res2 = interpreter.parse_query("Which person stayed in Zone A?", run_id="vrun_1", active_region_names=["Zone A"])
+    res2 = interpreter.parse_query(
+        "Which person stayed in Zone A?", run_id="vrun_1", active_region_names=["Zone A"]
+    )
     assert res2.status == QueryStatus.SUCCESS
     assert res2.query.object_class == "person"
 

@@ -23,32 +23,42 @@ def test_natural_language_query_interpreter():
     active_regions = ["Loading Zone A", "Restricted Corridor"]
 
     # 1. Event Search Query
-    res1 = interpreter.parse_query("Which objects entered Loading Zone A?", "run_01", active_regions)
+    res1 = interpreter.parse_query(
+        "Which objects entered Loading Zone A?", "run_01", active_regions
+    )
     assert res1.status == QueryStatus.SUCCESS
     assert res1.query.query_type == QueryType.EVENT_SEARCH
     assert res1.query.event_type == "OBJECT_ENTERED_REGION"
     assert res1.query.region_name == "Loading Zone A"
 
     # 2. Track Search Query with Duration
-    res2 = interpreter.parse_query("Which person tracks stayed longer than 5 seconds?", "run_01", active_regions)
+    res2 = interpreter.parse_query(
+        "Which person tracks stayed longer than 5 seconds?", "run_01", active_regions
+    )
     assert res2.status == QueryStatus.SUCCESS
     assert res2.query.object_class == "person"
     assert res2.query.min_duration_sec == 5.0
 
     # 3. Object Count at Timestamp Query
-    res3 = interpreter.parse_query("How many people were present at 10 seconds?", "run_01", active_regions)
+    res3 = interpreter.parse_query(
+        "How many people were present at 10 seconds?", "run_01", active_regions
+    )
     assert res3.status == QueryStatus.SUCCESS
     assert res3.query.query_type == QueryType.OBJECT_COUNT
     assert res3.query.object_class == "person"
     assert res3.query.at_timestamp_sec == 10.0
 
     # 4. Aggregation Query (Longest Dwell)
-    res4 = interpreter.parse_query("Which track stayed longest in Loading Zone A?", "run_01", active_regions)
+    res4 = interpreter.parse_query(
+        "Which track stayed longest in Loading Zone A?", "run_01", active_regions
+    )
     assert res4.status == QueryStatus.SUCCESS
     assert res4.query.aggregation == AggregationType.MAX
 
     # 5. Time Range Search Query
-    res5 = interpreter.parse_query("What happened between 5 and 15 seconds?", "run_01", active_regions)
+    res5 = interpreter.parse_query(
+        "What happened between 5 and 15 seconds?", "run_01", active_regions
+    )
     assert res5.status == QueryStatus.SUCCESS
     assert res5.query.time_range == [5.0, 15.0]
 
@@ -64,7 +74,9 @@ def test_ambiguity_and_unsupported_query_handling():
     assert "Multiple active regions exist" in res_amb.explanation
 
     # Unsupported Action Recognition Query
-    res_unsupported = interpreter.parse_query("What was the person doing?", "run_01", active_regions)
+    res_unsupported = interpreter.parse_query(
+        "What was the person doing?", "run_01", active_regions
+    )
     assert res_unsupported.status == QueryStatus.UNSUPPORTED
     assert "Unsupported Query" in res_unsupported.explanation
 
@@ -108,7 +120,9 @@ def create_test_video_run() -> VideoInferenceRun:
         video_id="sample_traffic_01",
         model_id="yolo11s.pt",
         tracker_name="ByteTrack",
-        sampling_config=FrameSamplingConfig(mode="EVERY_FRAME", sample_interval=1, total_sampled_frames=12),
+        sampling_config=FrameSamplingConfig(
+            mode="EVERY_FRAME", sample_interval=1, total_sampled_frames=12
+        ),
         duration_sec=12.0,
         processed_frames=12,
         total_detections=12,
@@ -139,6 +153,7 @@ def test_visual_query_service_and_api_endpoints(tmp_path):
     run = create_test_video_run()
     video_svc._runs[run.run_id] = run
     from visionforge.events.service import get_temporal_event_service
+
     global_event_svc = get_temporal_event_service()
     global_event_svc.create_region(
         video_id=run.video_id,

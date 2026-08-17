@@ -25,6 +25,7 @@ client = TestClient(app)
 
 # ─── Schema Tests ──────────────────────────────────────────────────
 
+
 def test_inference_config_validation():
     """Verify InferenceConfig validation boundaries."""
     cfg = InferenceConfig(model_id="yolo11s.pt", confidence_threshold=0.3, iou_threshold=0.5)
@@ -60,6 +61,7 @@ def test_standard_prediction_schema():
 
 # ─── Lifecycle Manager Tests ─────────────────────────────────────────
 
+
 def test_model_lifecycle_manager():
     """Verify model warming lifecycle transitions."""
     mgr = ModelLifecycleManager()
@@ -82,11 +84,13 @@ def test_model_lifecycle_manager():
 
 # ─── Service Execution Tests ─────────────────────────────────────────
 
+
 def test_inference_service_run_and_history(tmp_path):
     """Test single image inference execution, overlay generation, and history persistence."""
     # Create sample image file
     sample_img = tmp_path / "test_sample.jpg"
     from PIL import Image
+
     img = Image.new("RGB", (640, 480), color=(100, 100, 100))
     img.save(sample_img, "JPEG")
 
@@ -115,6 +119,7 @@ def test_inference_service_model_comparison(tmp_path):
     """Test side-by-side model comparison execution."""
     sample_img = tmp_path / "cmp_sample.jpg"
     from PIL import Image
+
     img = Image.new("RGB", (640, 480), color=(200, 200, 200))
     img.save(sample_img, "JPEG")
 
@@ -156,6 +161,7 @@ def test_inference_service_invalid_image():
 
 # ─── API Router Endpoints Tests ─────────────────────────────────────
 
+
 def test_api_list_inference_models():
     """Verify GET /api/v1/inference/models endpoint."""
     response = client.get("/api/v1/inference/models")
@@ -172,6 +178,7 @@ def test_api_run_inference_endpoint(tmp_path):
     """Verify POST /api/v1/inference/run endpoint."""
     sample_img = tmp_path / "api_sample.jpg"
     from PIL import Image
+
     img = Image.new("RGB", (640, 480), color=(150, 150, 150))
     img.save(sample_img, "JPEG")
 
@@ -206,6 +213,7 @@ def test_api_model_comparison_endpoint(tmp_path):
     """Verify POST /api/v1/inference/compare endpoint."""
     sample_img = tmp_path / "api_cmp_sample.jpg"
     from PIL import Image
+
     img = Image.new("RGB", (640, 480), color=(50, 50, 50))
     img.save(sample_img, "JPEG")
 

@@ -27,6 +27,7 @@ client = TestClient(app)
 
 # ─── Signal Calculators Tests ──────────────────────────────────────
 
+
 def test_uncertainty_score_calculation():
     """Verify uncertainty proxy scoring formulation for object detection predictions."""
     # High confidence (0.95) -> Low uncertainty
@@ -38,9 +39,7 @@ def test_uncertainty_score_calculation():
     assert high_u > 0.60
 
     # Competing predictions with small confidence margin
-    competing_u = compute_uncertainty_score(
-        [{"confidence": 0.52}, {"confidence": 0.49}]
-    )
+    competing_u = compute_uncertainty_score([{"confidence": 0.52}, {"confidence": 0.49}])
     assert competing_u > 0.60
 
 
@@ -101,6 +100,7 @@ def test_rank_candidate_samples():
 
 # ─── Test-Set Protection Tests ────────────────────────────────────
 
+
 def test_test_set_protection_enforcement():
     """MANDATORY TEST: Verify active learning candidate pool strictly blocks test set evaluation samples."""
     service = ActiveLearningService()
@@ -129,6 +129,7 @@ def test_test_set_protection_enforcement():
 
 
 # ─── Service Lifecycle & Review Queue Tests ─────────────────────────
+
 
 def test_active_learning_service_lifecycle():
     """Test active learning run execution, review queue decisions, and bias analysis."""
@@ -179,6 +180,7 @@ def test_active_learning_service_lifecycle():
 
 
 # ─── REST API Endpoint Tests ───────────────────────────────────────
+
 
 def test_api_create_run_and_review():
     """Test POST /api/v1/active-learning/runs and POST /api/v1/active-learning/review."""

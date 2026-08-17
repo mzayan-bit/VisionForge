@@ -105,7 +105,9 @@ class ModelLifecyclePipeline(BaseModel):
     stages: dict[str, StageDetail] = Field(
         default_factory=dict, description="Dictionary of stage details keyed by stage name"
     )
-    is_deployed: bool = Field(default=False, description="Whether final model is deployed to runtime")
+    is_deployed: bool = Field(
+        default=False, description="Whether final model is deployed to runtime"
+    )
     deployment_endpoint: str | None = Field(
         default=None, description="Active endpoint or engine reference"
     )
@@ -124,9 +126,7 @@ class CreatePipelineRequest(BaseModel):
     dataset_id: str = Field(default="safety_v2", description="Target dataset ID")
     dataset_version: str = Field(default="v1.0.0", description="Dataset version tag")
     base_model: str = Field(default="yolo11s.pt", description="Base model weights")
-    target_model_name: str = Field(
-        default="yolo11s_safety_v1", description="Registered model name"
-    )
+    target_model_name: str = Field(default="yolo11s_safety_v1", description="Registered model name")
     epochs: int = Field(default=50, ge=1, le=500, description="Training epochs")
     batch_size: int = Field(default=16, ge=1, le=128, description="Batch size")
     imgsz: int = Field(default=640, ge=320, le=1280, description="Image input dimension")

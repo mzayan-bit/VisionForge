@@ -118,7 +118,13 @@ class ActiveLearningService:
             budget=budget,
             weights=weights_obj,
             status="PLANNING",
-            review_counts={"pending": budget, "in_review": 0, "reviewed": 0, "skipped": 0, "flagged": 0},
+            review_counts={
+                "pending": budget,
+                "in_review": 0,
+                "reviewed": 0,
+                "skipped": 0,
+                "flagged": 0,
+            },
             benchmark_before_map50=0.845,
         )
 
@@ -179,7 +185,13 @@ class ActiveLearningService:
         cycle.budget = budget
         cycle.weights = w_obj
         cycle.selected_samples = ranked
-        cycle.review_counts = {"pending": budget, "in_review": 0, "reviewed": 0, "skipped": 0, "flagged": 0}
+        cycle.review_counts = {
+            "pending": budget,
+            "in_review": 0,
+            "reviewed": 0,
+            "skipped": 0,
+            "flagged": 0,
+        }
         cycle.status = "IN_REVIEW"
 
         self.save_to_disk()
@@ -224,7 +236,11 @@ class ActiveLearningService:
                     ReviewDecisionType.VALID_HARD_EXAMPLE,
                 ):
                     s.review_status = ReviewStatus.ACCEPTED
-                elif decision in (ReviewDecisionType.REJECTED, ReviewDecisionType.DUPLICATE, ReviewDecisionType.NOT_USEFUL):
+                elif decision in (
+                    ReviewDecisionType.REJECTED,
+                    ReviewDecisionType.DUPLICATE,
+                    ReviewDecisionType.NOT_USEFUL,
+                ):
                     s.review_status = ReviewStatus.REJECTED
                 elif decision == ReviewDecisionType.SKIP:
                     s.review_status = ReviewStatus.SKIPPED
@@ -232,11 +248,21 @@ class ActiveLearningService:
                     s.review_status = ReviewStatus.FLAGGED
 
         # Re-compute queue counts
-        reviewed_cnt = sum(1 for s in cycle.selected_samples if s.review_status == ReviewStatus.ACCEPTED)
-        rejected_cnt = sum(1 for s in cycle.selected_samples if s.review_status == ReviewStatus.REJECTED)
-        skipped_cnt = sum(1 for s in cycle.selected_samples if s.review_status == ReviewStatus.SKIPPED)
-        flagged_cnt = sum(1 for s in cycle.selected_samples if s.review_status == ReviewStatus.FLAGGED)
-        pending_cnt = len(cycle.selected_samples) - (reviewed_cnt + rejected_cnt + skipped_cnt + flagged_cnt)
+        reviewed_cnt = sum(
+            1 for s in cycle.selected_samples if s.review_status == ReviewStatus.ACCEPTED
+        )
+        rejected_cnt = sum(
+            1 for s in cycle.selected_samples if s.review_status == ReviewStatus.REJECTED
+        )
+        skipped_cnt = sum(
+            1 for s in cycle.selected_samples if s.review_status == ReviewStatus.SKIPPED
+        )
+        flagged_cnt = sum(
+            1 for s in cycle.selected_samples if s.review_status == ReviewStatus.FLAGGED
+        )
+        pending_cnt = len(cycle.selected_samples) - (
+            reviewed_cnt + rejected_cnt + skipped_cnt + flagged_cnt
+        )
 
         cycle.review_counts = {
             "pending": max(0, pending_cnt),
@@ -335,7 +361,9 @@ class ActiveLearningService:
         )
         return cycle
 
-    def get_cycle_history(self, dataset_id: str = "safety_v2") -> list[ActiveLearningCycleHistoryItem]:
+    def get_cycle_history(
+        self, dataset_id: str = "safety_v2"
+    ) -> list[ActiveLearningCycleHistoryItem]:
         """Retrieve longitudinal active learning progression tracking diminishing returns."""
         items: list[ActiveLearningCycleHistoryItem] = [
             ActiveLearningCycleHistoryItem(
@@ -439,7 +467,9 @@ class ActiveLearningService:
 
     def get_iteration(self, iteration_id: str) -> ActiveLearningIteration:
         if iteration_id not in self._iterations:
-            raise ActiveLearningRunNotFoundError(f"Active learning iteration '{iteration_id}' not found.")
+            raise ActiveLearningRunNotFoundError(
+                f"Active learning iteration '{iteration_id}' not found."
+            )
         return self._iterations[iteration_id]
 
     def list_iterations(self, limit: int = 50, offset: int = 0) -> list[ActiveLearningIteration]:
@@ -582,7 +612,8 @@ class ActiveLearningService:
             json.dumps([d.model_dump() for d in self._decisions], indent=2), encoding="utf-8"
         )
         self._iterations_file.write_text(
-            json.dumps([i.model_dump() for i in self._iterations.values()], indent=2), encoding="utf-8"
+            json.dumps([i.model_dump() for i in self._iterations.values()], indent=2),
+            encoding="utf-8",
         )
 
     def load_from_disk(self) -> None:

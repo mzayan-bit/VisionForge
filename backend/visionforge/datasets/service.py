@@ -55,7 +55,9 @@ class PreparationHistoryStore:
         self._manifests: dict[str, DatasetPreparationManifest] = {}
         self.load_from_disk()
 
-    def add_run(self, run: PreparationRun, manifest: DatasetPreparationManifest | None = None) -> None:
+    def add_run(
+        self, run: PreparationRun, manifest: DatasetPreparationManifest | None = None
+    ) -> None:
         """Add or update preparation run."""
         self._runs[run.preparation_id] = run
         if manifest:
@@ -84,7 +86,9 @@ class PreparationHistoryStore:
             "saved_at": datetime.now(UTC).isoformat(),
             "runs": [r.model_dump() for r in self._runs.values()],
         }
-        self._history_file.write_text(json.dumps(serializable, indent=2, default=str), encoding="utf-8")
+        self._history_file.write_text(
+            json.dumps(serializable, indent=2, default=str), encoding="utf-8"
+        )
 
     def load_from_disk(self) -> None:
         """Restore history runs from disk JSON if available."""

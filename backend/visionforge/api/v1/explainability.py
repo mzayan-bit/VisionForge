@@ -180,9 +180,7 @@ def compare_explanations(payload: CompareExplanationsRequest) -> APIResponse[Exp
     """Compute spatial attribution difference between two explanation runs."""
     service = _get_service()
     try:
-        cmp_res = service.compare_explanations(
-            payload.explanation_id_a, payload.explanation_id_b
-        )
+        cmp_res = service.compare_explanations(payload.explanation_id_a, payload.explanation_id_b)
         return success_response(
             data=cmp_res, message="Explanation comparison completed successfully"
         )

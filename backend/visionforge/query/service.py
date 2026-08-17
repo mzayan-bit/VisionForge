@@ -113,9 +113,7 @@ class VisualQueryService:
             return res
 
         # 4. Execution
-        res = self._executor.execute_query(
-            interp.query, text, interp.explanation, interp_ms
-        )
+        res = self._executor.execute_query(interp.query, text, interp.explanation, interp_ms)
 
         self._history[res.query_id] = res
         self.save_to_disk()

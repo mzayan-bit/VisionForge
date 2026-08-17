@@ -33,9 +33,7 @@ class ImageEmbeddingResult(BaseModel):
     embedding: list[float] = Field(
         description="L2-normalized dense embedding vector representation"
     )
-    dimension: int = Field(
-        default=768, description="Dimensionality of the embedding vector"
-    )
+    dimension: int = Field(default=768, description="Dimensionality of the embedding vector")
     model: str = Field(description="Identifier name of the generating vision model")
     version: str = Field(default="1.0.0", description="Version of the vision model")
     timestamp: str = Field(
@@ -49,13 +47,9 @@ class ImageEmbeddingResult(BaseModel):
         default=0.0, description="Model loading time in milliseconds if lazy loaded"
     )
     device_used: str = Field(default="cpu", description="Compute backend used (cpu, cuda, mps)")
-    l2_norm: float = Field(
-        default=1.0, description="Calculated L2 norm of the embedding vector"
-    )
+    l2_norm: float = Field(default=1.0, description="Calculated L2 norm of the embedding vector")
     image_metadata: ImageMetadata = Field(description="Metadata of the processed image")
-    vector_stats: VectorStats = Field(
-        description="Statistical summary of the vector components"
-    )
+    vector_stats: VectorStats = Field(description="Statistical summary of the vector components")
     extra_metadata: dict[str, Any] = Field(
         default_factory=dict,
         description="Extensible key-value metadata for future index & DB compatibility",

@@ -74,8 +74,18 @@ def test_detection_metrics_evaluation():
     }
     preds = {
         "img_01": [
-            {"class_id": 0, "class_name": "helmet", "confidence": 0.95, "bbox": [11.0, 10.0, 49.0, 50.0]},
-            {"class_id": 1, "class_name": "person", "confidence": 0.90, "bbox": [12.0, 9.0, 99.0, 201.0]},
+            {
+                "class_id": 0,
+                "class_name": "helmet",
+                "confidence": 0.95,
+                "bbox": [11.0, 10.0, 49.0, 50.0],
+            },
+            {
+                "class_id": 1,
+                "class_name": "person",
+                "confidence": 0.90,
+                "bbox": [12.0, 9.0, 99.0, 201.0],
+            },
         ]
     }
 
@@ -107,10 +117,20 @@ def test_error_analyzer_taxonomy():
         image_id="img_fp",
         image_path="/test/img_fp.jpg",
         ground_truths=[],
-        predictions=[{"class_id": 0, "class_name": "helmet", "confidence": 0.85, "bbox": [10.0, 10.0, 50.0, 50.0]}],
+        predictions=[
+            {
+                "class_id": 0,
+                "class_name": "helmet",
+                "confidence": 0.85,
+                "bbox": [10.0, 10.0, 50.0, 50.0],
+            }
+        ],
     )
     assert len(errs_fp) >= 1
-    assert errs_fp[0].error_type in (ErrorCategory.FALSE_POSITIVE, ErrorCategory.BACKGROUND_DETECTION)
+    assert errs_fp[0].error_type in (
+        ErrorCategory.FALSE_POSITIVE,
+        ErrorCategory.BACKGROUND_DETECTION,
+    )
 
     # 2. False Negative (Unmatched GT)
     errs_fn = analyzer.analyze_image(
@@ -127,7 +147,14 @@ def test_error_analyzer_taxonomy():
         image_id="img_misc",
         image_path="/test/img_misc.jpg",
         ground_truths=[{"class_id": 0, "class_name": "helmet", "bbox": [10.0, 10.0, 50.0, 50.0]}],
-        predictions=[{"class_id": 1, "class_name": "person", "confidence": 0.88, "bbox": [10.0, 10.0, 50.0, 50.0]}],
+        predictions=[
+            {
+                "class_id": 1,
+                "class_name": "person",
+                "confidence": 0.88,
+                "bbox": [10.0, 10.0, 50.0, 50.0],
+            }
+        ],
     )
     assert len(errs_misc) >= 1
     assert any(e.error_type == ErrorCategory.MISCLASSIFICATION for e in errs_misc)
@@ -137,7 +164,14 @@ def test_error_analyzer_taxonomy():
         image_id="img_loc",
         image_path="/test/img_loc.jpg",
         ground_truths=[{"class_id": 0, "class_name": "helmet", "bbox": [0.0, 0.0, 100.0, 100.0]}],
-        predictions=[{"class_id": 0, "class_name": "helmet", "confidence": 0.80, "bbox": [50.0, 0.0, 150.0, 100.0]}],
+        predictions=[
+            {
+                "class_id": 0,
+                "class_name": "helmet",
+                "confidence": 0.80,
+                "bbox": [50.0, 0.0, 150.0, 100.0],
+            }
+        ],
     )
     assert len(errs_loc) >= 1
     assert any(e.error_type == ErrorCategory.POOR_LOCALIZATION for e in errs_loc)
@@ -145,7 +179,9 @@ def test_error_analyzer_taxonomy():
 
 def test_runtime_benchmarker():
     """Verify runtime benchmarker excludes warm-up iterations and computes percentiles and throughput."""
-    benchmarker = ModelRuntimeBenchmarker(warmup_iterations=3, evaluated_iterations=15, device="cpu")
+    benchmarker = ModelRuntimeBenchmarker(
+        warmup_iterations=3, evaluated_iterations=15, device="cpu"
+    )
     runtime = benchmarker.benchmark_model(model_parameters_m=11.1, model_size_mb=22.5)
 
     assert runtime.warmup_iterations == 3
@@ -186,7 +222,9 @@ def test_fair_comparison_and_regression_detection():
     )
 
     # Compare
-    cmp_res = svc.compare_benchmarks(baseline_id=base_run.benchmark_id, candidate_id=cand_run.benchmark_id)
+    cmp_res = svc.compare_benchmarks(
+        baseline_id=base_run.benchmark_id, candidate_id=cand_run.benchmark_id
+    )
     assert cmp_res.is_directly_comparable is True
     assert "map50" in cmp_res.metric_deltas
     assert "throughput_fps" in cmp_res.metric_deltas
@@ -207,7 +245,9 @@ def test_fair_comparison_and_regression_detection():
         split_used="val",  # Different split!
     )
 
-    cmp_incomp = svc.compare_benchmarks(baseline_id=base_run.benchmark_id, candidate_id=incomp_run.benchmark_id)
+    cmp_incomp = svc.compare_benchmarks(
+        baseline_id=base_run.benchmark_id, candidate_id=incomp_run.benchmark_id
+    )
     assert cmp_incomp.is_directly_comparable is False
     assert len(cmp_incomp.incompatibility_reasons) > 0
     assert cmp_incomp.regression_status == RegressionStatus.INCOMPARABLE

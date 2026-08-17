@@ -56,21 +56,15 @@ class ExplanationConfig(BaseModel):
     target_layer: str | None = Field(
         default=None, description="Model layer name to extract activations/gradients from"
     )
-    target_class: str | None = Field(
-        default=None, description="Category class label to attribute"
-    )
+    target_class: str | None = Field(default=None, description="Category class label to attribute")
     target_prediction_id: str | None = Field(
         default=None, description="Specific prediction object ID to explain"
     )
     colormap: str = Field(
         default="jet", description="Heatmap colormap palette ('jet', 'viridis', 'inferno')"
     )
-    opacity: float = Field(
-        default=0.55, ge=0.0, le=1.0, description="Overlay blending opacity"
-    )
-    num_steps: int = Field(
-        default=25, ge=5, le=100, description="Integration / perturbation steps"
-    )
+    opacity: float = Field(default=0.55, ge=0.0, le=1.0, description="Overlay blending opacity")
+    num_steps: int = Field(default=25, ge=5, le=100, description="Integration / perturbation steps")
     show_prediction_box: bool = Field(
         default=True, description="Whether to render prediction bounding box outline"
     )
@@ -155,8 +149,12 @@ class ExplanationComparison(BaseModel):
     """Side-by-side diagnostic comparison between two explanation runs."""
 
     comparison_id: str = Field(description="Unique comparison ID ('cmp_exp_...')")
-    explanation_a: ExplanationRun = Field(description="First explanation run (e.g. Sample A / Model A)")
-    explanation_b: ExplanationRun = Field(description="Second explanation run (e.g. Sample B / Model B)")
+    explanation_a: ExplanationRun = Field(
+        description="First explanation run (e.g. Sample A / Model A)"
+    )
+    explanation_b: ExplanationRun = Field(
+        description="Second explanation run (e.g. Sample B / Model B)"
+    )
     attribution_difference_score: float = Field(
         description="Cosine / Mean Absolute Difference between attribution maps"
     )

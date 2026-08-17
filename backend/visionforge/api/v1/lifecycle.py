@@ -71,9 +71,7 @@ def get_model_lifecycle_pipeline(pipeline_id: str) -> APIResponse[ModelLifecycle
     service = _get_service()
     try:
         pipeline = service.get_pipeline(pipeline_id)
-        return success_response(
-            data=pipeline, message=f"Retrieved pipeline '{pipeline_id}'"
-        )
+        return success_response(data=pipeline, message=f"Retrieved pipeline '{pipeline_id}'")
     except PipelineNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -129,7 +127,8 @@ def get_pipeline_lineage(pipeline_id: str) -> APIResponse[list[PipelineLineageNo
     try:
         nodes = service.get_pipeline_lineage(pipeline_id)
         return success_response(
-            data=nodes, message=f"Retrieved {len(nodes)} lineage node(s) for pipeline '{pipeline_id}'"
+            data=nodes,
+            message=f"Retrieved {len(nodes)} lineage node(s) for pipeline '{pipeline_id}'",
         )
     except PipelineNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

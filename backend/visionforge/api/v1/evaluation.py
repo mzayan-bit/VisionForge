@@ -51,7 +51,9 @@ class CompareModelsRequest(BaseModel):
 # ─── Evaluation Run Routes ─────────────────────────────────────────────
 
 
-@router.post("/runs", response_model=APIResponse[EvaluationRun], status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/runs", response_model=APIResponse[EvaluationRun], status_code=status.HTTP_201_CREATED
+)
 def create_evaluation(req: CreateEvaluationRequest) -> APIResponse[EvaluationRun]:
     """Trigger a new model evaluation run on an exact dataset version."""
     svc = _get_service()
@@ -86,7 +88,9 @@ def get_evaluation(eval_id: str) -> APIResponse[EvaluationRun]:
     svc = _get_service()
     run = svc.get_evaluation(eval_id)
     if not run:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Evaluation run '{eval_id}' not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Evaluation run '{eval_id}' not found"
+        )
     return success_response(data=run, message=f"Retrieved evaluation '{eval_id}'")
 
 
@@ -96,7 +100,9 @@ def get_evaluation_metrics(eval_id: str) -> APIResponse[dict[str, Any]]:
     svc = _get_service()
     run = svc.get_evaluation(eval_id)
     if not run:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Evaluation run '{eval_id}' not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Evaluation run '{eval_id}' not found"
+        )
     return success_response(
         data={
             "eval_id": run.eval_id,
@@ -120,7 +126,9 @@ def get_threshold_analysis(eval_id: str) -> APIResponse[list[ThresholdPoint]]:
     """Retrieve performance metrics evaluated across confidence thresholds [0.20..0.80]."""
     svc = _get_service()
     pts = svc.get_threshold_analysis(eval_id)
-    return success_response(data=pts, message=f"Retrieved {len(pts)} threshold analysis operating points")
+    return success_response(
+        data=pts, message=f"Retrieved {len(pts)} threshold analysis operating points"
+    )
 
 
 @router.get("/runs/{eval_id}/confusion", response_model=APIResponse[ConfusionMatrixData])
@@ -194,16 +202,22 @@ def get_failure_detail(eval_id: str, sample_id: str) -> APIResponse[FailureSampl
     svc = _get_service()
     detail = svc.get_failure_detail(eval_id, sample_id)
     if not detail:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Failure sample '{sample_id}' not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Failure sample '{sample_id}' not found"
+        )
     return success_response(data=detail, message=f"Retrieved failure sample '{sample_id}'")
 
 
-@router.get("/runs/{eval_id}/failure-clusters", response_model=APIResponse[list[VisualFailureCluster]])
+@router.get(
+    "/runs/{eval_id}/failure-clusters", response_model=APIResponse[list[VisualFailureCluster]]
+)
 def get_failure_clusters(eval_id: str) -> APIResponse[list[VisualFailureCluster]]:
     """Retrieve unsupervised visual clusters (Cluster 1, Cluster 2, Cluster 3) of failure samples."""
     svc = _get_service()
     clusters = svc.get_failure_clusters(eval_id)
-    return success_response(data=clusters, message=f"Retrieved {len(clusters)} visual failure cluster(s)")
+    return success_response(
+        data=clusters, message=f"Retrieved {len(clusters)} visual failure cluster(s)"
+    )
 
 
 @router.get("/runs/{eval_id}/pattern-analysis", response_model=APIResponse[PatternAnalysisReport])
@@ -214,7 +228,10 @@ def get_pattern_analysis(eval_id: str) -> APIResponse[PatternAnalysisReport]:
     return success_response(data=report, message="Retrieved failure pattern analysis report")
 
 
-@router.post("/runs/{eval_id}/failures/{sample_id}/active-learning", response_model=APIResponse[dict[str, Any]])
+@router.post(
+    "/runs/{eval_id}/failures/{sample_id}/active-learning",
+    response_model=APIResponse[dict[str, Any]],
+)
 def add_failure_to_active_learning(eval_id: str, sample_id: str) -> APIResponse[dict[str, Any]]:
     """Send a verified failure sample directly to the Active Learning candidate queue."""
     svc = _get_service()

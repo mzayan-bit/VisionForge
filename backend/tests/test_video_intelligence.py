@@ -29,9 +29,7 @@ def test_bytetrack_tracker_persistent_ids():
     tracker = ByteTracker(iou_threshold=0.3, max_lost_frames=30)
 
     # Frame 1: Person at (100, 100) -> (200, 300)
-    dets_f1 = [
-        {"class_name": "person", "confidence": 0.90, "bbox": [100.0, 100.0, 200.0, 300.0]}
-    ]
+    dets_f1 = [{"class_name": "person", "confidence": 0.90, "bbox": [100.0, 100.0, 200.0, 300.0]}]
     res_f1 = tracker.update(
         frame_index=0, timestamp_sec=0.0, detections=dets_f1, img_width=1920, img_height=1080
     )
@@ -40,9 +38,7 @@ def test_bytetrack_tracker_persistent_ids():
     assert track_id_1 == 1
 
     # Frame 2: Person moved slightly to (110, 100) -> (210, 300)
-    dets_f2 = [
-        {"class_name": "person", "confidence": 0.92, "bbox": [110.0, 100.0, 210.0, 300.0]}
-    ]
+    dets_f2 = [{"class_name": "person", "confidence": 0.92, "bbox": [110.0, 100.0, 210.0, 300.0]}]
     res_f2 = tracker.update(
         frame_index=1, timestamp_sec=0.033, detections=dets_f2, img_width=1920, img_height=1080
     )
@@ -58,8 +54,12 @@ def test_trajectory_and_pixel_speed_calculation():
     for idx in range(3):
         t_sec = idx * 1.0
         x_min = 100.0 + (idx * 30.0)  # Move 30px per frame (overlapping IoU)
-        dets = [{"class_name": "car", "confidence": 0.88, "bbox": [x_min, 200.0, x_min + 100.0, 300.0]}]
-        tracker.update(frame_index=idx, timestamp_sec=t_sec, detections=dets, img_width=1920, img_height=1080)
+        dets = [
+            {"class_name": "car", "confidence": 0.88, "bbox": [x_min, 200.0, x_min + 100.0, 300.0]}
+        ]
+        tracker.update(
+            frame_index=idx, timestamp_sec=t_sec, detections=dets, img_width=1920, img_height=1080
+        )
 
     tracks = tracker.get_all_tracks()
     assert len(tracks) == 1

@@ -349,7 +349,9 @@ class DatasetQualityAnalyzer:
                         score = float(sims[idx_a, idx_b])
 
                         # Skip if already captured as exact hash
-                        if sa.get("content_hash") and sa.get("content_hash") == sb.get("content_hash"):
+                        if sa.get("content_hash") and sa.get("content_hash") == sb.get(
+                            "content_hash"
+                        ):
                             continue
 
                         pairs.append(
@@ -403,7 +405,9 @@ class DatasetQualityAnalyzer:
             conf_gap_score = max(0.0, 1.0 - conf)
 
             # Composite Prioritization Score (transparent weights: 45% failure, 35% conf margin, 20% complexity)
-            prioritization = (0.45 * fail_score) + (0.35 * conf_gap_score) + (0.20 * complexity_score)
+            prioritization = (
+                (0.45 * fail_score) + (0.35 * conf_gap_score) + (0.20 * complexity_score)
+            )
 
             reasons: list[str] = []
             if fails:
@@ -429,7 +433,9 @@ class DatasetQualityAnalyzer:
                     },
                     failure_reasons=reasons,
                     ground_truth_classes=[a.get("class_name", "") for a in annos],
-                    predicted_classes=[f.get("predicted_class", "") for f in fails if f.get("predicted_class")],
+                    predicted_classes=[
+                        f.get("predicted_class", "") for f in fails if f.get("predicted_class")
+                    ],
                 )
             )
 
@@ -447,7 +453,9 @@ class DatasetQualityAnalyzer:
     ) -> DatasetHealthSummary:
         """Categorize dataset health into transparent status indicators."""
         # 1. Overall Integrity
-        corrupted_count = sum(1 for i in quality_issues if i.flag == ImageQualityFlag.CORRUPTED.value)
+        corrupted_count = sum(
+            1 for i in quality_issues if i.flag == ImageQualityFlag.CORRUPTED.value
+        )
         if corrupted_count > 0:
             int_status = HealthCategoryStatus.CRITICAL
             int_head = f"{corrupted_count} corrupted or unreadable images"
@@ -462,12 +470,18 @@ class DatasetQualityAnalyzer:
             int_det = "All files pass format and decoding integrity checks."
 
         # 2. Annotation Quality
-        anno_critical = sum(1 for i in quality_issues if i.severity == "CRITICAL" and i.issue_type == "ANNOTATION_QUALITY")
+        anno_critical = sum(
+            1
+            for i in quality_issues
+            if i.severity == "CRITICAL" and i.issue_type == "ANNOTATION_QUALITY"
+        )
         anno_warnings = sum(1 for i in quality_issues if i.issue_type == "ANNOTATION_QUALITY")
         if anno_critical > 0:
             anno_status = HealthCategoryStatus.CRITICAL
             anno_head = f"{anno_critical} critical annotation defects"
-            anno_det = "Zero-area or duplicate bounding boxes detected. Fix geometry before training."
+            anno_det = (
+                "Zero-area or duplicate bounding boxes detected. Fix geometry before training."
+            )
         elif anno_warnings > 5:
             anno_status = HealthCategoryStatus.NEEDS_REVIEW
             anno_head = f"{anno_warnings} annotation warnings"
@@ -506,14 +520,18 @@ class DatasetQualityAnalyzer:
         else:
             leak_status = HealthCategoryStatus.GOOD
             leak_head = "Zero cross-split leakage detected"
-            leak_det = "No exact duplicates or near-duplicate leakage found across split boundaries."
+            leak_det = (
+                "No exact duplicates or near-duplicate leakage found across split boundaries."
+            )
 
         # 6. Model Difficulty
         high_diff_count = sum(1 for h in hard_samples if h.prioritization_score > 0.60)
         if high_diff_count > total_samples * 0.20:
             diff_status = HealthCategoryStatus.NEEDS_REVIEW
             diff_head = f"{high_diff_count} high-difficulty failure dense samples"
-            diff_det = "High failure concentration. Prioritize for human review and active learning."
+            diff_det = (
+                "High failure concentration. Prioritize for human review and active learning."
+            )
         else:
             diff_status = HealthCategoryStatus.GOOD
             diff_head = "Standard sample difficulty distribution"

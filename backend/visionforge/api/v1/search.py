@@ -128,7 +128,10 @@ async def search_by_frame(
     )
     try:
         results = await svc.search_unified(req=u_req)
-        return success_response(data=results, message=f"Found {results.returned_count} matches for frame @ {req.timestamp_sec:.1f}s")
+        return success_response(
+            data=results,
+            message=f"Found {results.returned_count} matches for frame @ {req.timestamp_sec:.1f}s",
+        )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -154,7 +157,10 @@ async def search_by_object(
     )
     try:
         results = await svc.search_unified(req=u_req)
-        return success_response(data=results, message=f"Found {results.returned_count} matches for Track #{req.track_id}")
+        return success_response(
+            data=results,
+            message=f"Found {results.returned_count} matches for Track #{req.track_id}",
+        )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -178,7 +184,9 @@ async def search_by_event(
     )
     try:
         results = await svc.search_unified(req=u_req)
-        return success_response(data=results, message=f"Found {results.returned_count} matches for Event {req.event_id}")
+        return success_response(
+            data=results, message=f"Found {results.returned_count} matches for Event {req.event_id}"
+        )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -243,7 +251,10 @@ def index_video_run(req: IndexRunRequest) -> APIResponse[dict[str, int]]:
     svc = _get_service()
     try:
         cnt = svc.index_video_run_assets(req.run_id)
-        return success_response(data={"indexed_assets": cnt}, message=f"Indexed {cnt} visual assets from run '{req.run_id}'")
+        return success_response(
+            data={"indexed_assets": cnt},
+            message=f"Indexed {cnt} visual assets from run '{req.run_id}'",
+        )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -358,6 +369,4 @@ async def get_search_history(
     """Return paginated search history records."""
     svc = _get_service()
     history = svc.get_search_history(limit=limit, offset=offset)
-    return success_response(
-        data=history, message=f"Retrieved {len(history)} search history log(s)"
-    )
+    return success_response(data=history, message=f"Retrieved {len(history)} search history log(s)")

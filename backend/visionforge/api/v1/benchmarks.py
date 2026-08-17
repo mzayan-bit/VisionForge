@@ -33,7 +33,9 @@ class CreateBenchmarkRunRequest(BaseModel):
     split_used: str = Field(default="test", description="Dataset split evaluated")
     task: str = Field(default="OBJECT_DETECTION", description="Computer vision task")
     is_baseline: bool = Field(default=False, description="Whether this run serves as baseline")
-    baseline_benchmark_id: str | None = Field(default=None, description="Optional baseline reference ID")
+    baseline_benchmark_id: str | None = Field(
+        default=None, description="Optional baseline reference ID"
+    )
     description: str = Field(default="", description="Benchmark objective notes")
     config: EvaluationConfig = Field(default_factory=EvaluationConfig)
     class_names: list[str] | None = None
@@ -111,7 +113,8 @@ def create_benchmark_run(
             class_names=req.class_names,
         )
         return success_response(
-            data=run, message=f"Benchmark '{run.benchmark_id}' completed with mAP@50:95 of {run.metrics.map50_95:.2%}"
+            data=run,
+            message=f"Benchmark '{run.benchmark_id}' completed with mAP@50:95 of {run.metrics.map50_95:.2%}",
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -169,7 +172,9 @@ def get_benchmark_failures(
         limit=limit,
         offset=offset,
     )
-    return success_response(data=failures, message=f"Retrieved {len(failures)} failure prediction(s)")
+    return success_response(
+        data=failures, message=f"Retrieved {len(failures)} failure prediction(s)"
+    )
 
 
 @router.post(

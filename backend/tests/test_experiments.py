@@ -1,6 +1,5 @@
 """Unit and Integration Tests for VisionForge Experiment Tracking, Lineage, and Reproducibility."""
 
-
 from fastapi.testclient import TestClient
 
 from visionforge.experiments.fingerprint import (
@@ -21,6 +20,7 @@ client = TestClient(app)
 
 
 # ─── Fingerprint & Checksum Tests ───────────────────────────────────
+
 
 def test_calculate_sha256_file(tmp_path):
     """Test SHA-256 calculation over dummy artifact file."""
@@ -61,6 +61,7 @@ def test_create_artifact_reference(tmp_path):
 
 # ─── Environment Snapshot Tests ─────────────────────────────────────
 
+
 def test_capture_environment_snapshot():
     """Verify runtime environment and Git commit SHA capture."""
     env = capture_environment_snapshot()
@@ -70,6 +71,7 @@ def test_capture_environment_snapshot():
 
 
 # ─── Service Lifecycle & Lineage Tests ───────────────────────────────
+
 
 def test_experiment_service_lifecycle():
     """Test experiment creation, attaching components, lineage graph, and timeline generation."""
@@ -147,6 +149,7 @@ def test_experiment_comparison_and_reproducibility():
 
 
 # ─── REST API Endpoint Tests ───────────────────────────────────────
+
 
 def test_api_create_and_get_experiment():
     """Test POST /api/v1/experiments and GET /api/v1/experiments/{id}."""

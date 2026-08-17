@@ -27,7 +27,9 @@ class InferenceConfig(BaseModel):
         default=0.45, ge=0.01, le=1.0, description="NMS Intersection over Union threshold"
     )
     imgsz: int = Field(default=640, ge=32, le=2048, description="Target image dimension in pixels")
-    device: str = Field(default="auto", description="Compute device target ('auto', 'cpu', 'cuda', 'mps')")
+    device: str = Field(
+        default="auto", description="Compute device target ('auto', 'cpu', 'cuda', 'mps')"
+    )
 
 
 class NormalizedBoundingBox(BaseModel):
@@ -58,10 +60,18 @@ class PredictionSummary(BaseModel):
     """Aggregated prediction statistics for an inference execution."""
 
     total_detections: int = Field(default=0, description="Total detected bounding boxes")
-    classes_detected: list[str] = Field(default_factory=list, description="Unique class labels detected")
-    highest_confidence: float = Field(default=0.0, description="Maximum confidence score in result set")
-    average_confidence: float = Field(default=0.0, description="Mean confidence score across predictions")
-    inference_ms: float = Field(default=0.0, description="Inference execution latency in milliseconds")
+    classes_detected: list[str] = Field(
+        default_factory=list, description="Unique class labels detected"
+    )
+    highest_confidence: float = Field(
+        default=0.0, description="Maximum confidence score in result set"
+    )
+    average_confidence: float = Field(
+        default=0.0, description="Mean confidence score across predictions"
+    )
+    inference_ms: float = Field(
+        default=0.0, description="Inference execution latency in milliseconds"
+    )
     model_id: str = Field(description="Evaluated model ID")
     image_width: int = Field(default=0, description="Original image width in pixels")
     image_height: int = Field(default=0, description="Original image height in pixels")

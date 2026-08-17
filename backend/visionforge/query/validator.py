@@ -32,7 +32,8 @@ class QueryValidator:
             active_regs = event_svc.list_regions(run.video_id)
             if active_regs:
                 matched = any(
-                    r.name.lower() == query.region_name.lower() or query.region_name.lower() in r.name.lower()
+                    r.name.lower() == query.region_name.lower()
+                    or query.region_name.lower() in r.name.lower()
                     for r in active_regs
                 )
                 if not matched:
@@ -44,7 +45,9 @@ class QueryValidator:
         # 3. Validate Time Range boundaries
         if query.time_range:
             if len(query.time_range) != 2:
-                raise QueryValidationError("time_range filter must specify exactly [start_sec, end_sec].")
+                raise QueryValidationError(
+                    "time_range filter must specify exactly [start_sec, end_sec]."
+                )
             if query.time_range[0] < 0.0 or query.time_range[1] < 0.0:
                 raise QueryValidationError("time_range timestamps must be non-negative.")
             if query.time_range[0] > query.time_range[1]:

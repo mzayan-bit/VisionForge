@@ -31,14 +31,20 @@ class CreateRegionRequest(BaseModel):
     video_id: str = Field(description="Target video asset ID")
     name: str = Field(description="Human-readable region name")
     coordinates: list[list[float]] = Field(description="Vertices coordinates")
-    shape_type: RegionShape = Field(default=RegionShape.RECTANGLE, description="Region geometry shape")
-    coordinate_system: CoordinateSystem = Field(default=CoordinateSystem.PIXEL, description="Coordinate system")
+    shape_type: RegionShape = Field(
+        default=RegionShape.RECTANGLE, description="Region geometry shape"
+    )
+    coordinate_system: CoordinateSystem = Field(
+        default=CoordinateSystem.PIXEL, description="Coordinate system"
+    )
     color: str = Field(default="#3b82f6", description="Color stroke hex code")
 
 
 class GenerateEventsRequest(BaseModel):
     run_id: str = Field(description="Target VideoInferenceRun ID")
-    config: EventRuleConfig | None = Field(default=None, description="Optional rule configuration thresholds")
+    config: EventRuleConfig | None = Field(
+        default=None, description="Optional rule configuration thresholds"
+    )
 
 
 @router.post(
@@ -66,7 +72,7 @@ def create_region(payload: CreateRegionRequest) -> RegionOfInterest:
     summary="List Regions of Interest",
 )
 def list_regions(
-    video_id: str | None = Query(default=None, description="Filter regions by video asset ID")
+    video_id: str | None = Query(default=None, description="Filter regions by video asset ID"),
 ) -> list[RegionOfInterest]:
     """Retrieve list of defined regions of interest."""
     service = get_temporal_event_service()

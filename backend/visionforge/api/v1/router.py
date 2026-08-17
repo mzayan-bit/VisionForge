@@ -17,6 +17,7 @@ from visionforge.api.v1.inference import router as inference_router
 from visionforge.api.v1.lifecycle import router as lifecycle_router
 from visionforge.api.v1.memory import router as memory_router
 from visionforge.api.v1.models import router as models_router
+from visionforge.api.v1.multimodal import router as multimodal_router
 from visionforge.api.v1.query import router as query_router
 from visionforge.api.v1.search import router as search_router
 from visionforge.api.v1.system import router as system_router
@@ -44,5 +45,6 @@ router.include_router(active_learning_router)
 router.include_router(video_router)
 router.include_router(events_router)
 router.include_router(query_router)
+router.include_router(multimodal_router)
 
 __all__ = ["router"]

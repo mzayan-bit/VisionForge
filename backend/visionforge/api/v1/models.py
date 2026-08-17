@@ -32,9 +32,7 @@ class ModelListData(BaseModel):
 class ModelDetailData(BaseModel):
     """Response payload for a single model detail."""
 
-    model: InstalledModelMetadata = Field(
-        description="Full model metadata record"
-    )
+    model: InstalledModelMetadata = Field(description="Full model metadata record")
 
 
 class ModelValidationData(BaseModel):
@@ -42,12 +40,8 @@ class ModelValidationData(BaseModel):
 
     name: str = Field(description="Validated model name")
     valid: bool = Field(description="Whether the model passed validation")
-    warnings: list[str] = Field(
-        default_factory=list, description="Non-fatal validation warnings"
-    )
-    errors: list[str] = Field(
-        default_factory=list, description="Fatal validation errors"
-    )
+    warnings: list[str] = Field(default_factory=list, description="Non-fatal validation warnings")
+    errors: list[str] = Field(default_factory=list, description="Fatal validation errors")
     metadata: dict[str, Any] | None = Field(
         default=None, description="Model metadata if validation succeeded"
     )

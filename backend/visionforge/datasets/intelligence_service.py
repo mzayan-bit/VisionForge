@@ -78,7 +78,9 @@ class DatasetIntelligenceService:
         if not issues_path.exists():
             # Build and cache issues
             issues = self._build_synthetic_quality_issues(dataset_id)
-            issues_path.write_text(json.dumps([i.model_dump() for i in issues], indent=2), encoding="utf-8")
+            issues_path.write_text(
+                json.dumps([i.model_dump() for i in issues], indent=2), encoding="utf-8"
+            )
         else:
             try:
                 data = json.loads(issues_path.read_text(encoding="utf-8"))
@@ -109,7 +111,9 @@ class DatasetIntelligenceService:
                 pass
 
         pairs = self._build_synthetic_leakage_pairs(dataset_id)
-        leak_path.write_text(json.dumps([p.model_dump() for p in pairs], indent=2), encoding="utf-8")
+        leak_path.write_text(
+            json.dumps([p.model_dump() for p in pairs], indent=2), encoding="utf-8"
+        )
         return pairs
 
     def get_hard_samples(
@@ -130,7 +134,9 @@ class DatasetIntelligenceService:
                 items = self._build_synthetic_hard_samples(dataset_id)
         else:
             items = self._build_synthetic_hard_samples(dataset_id)
-            hard_path.write_text(json.dumps([h.model_dump() for h in items], indent=2), encoding="utf-8")
+            hard_path.write_text(
+                json.dumps([h.model_dump() for h in items], indent=2), encoding="utf-8"
+            )
 
         if min_score > 0.0:
             items = [h for h in items if h.prioritization_score >= min_score]
@@ -230,11 +236,22 @@ class DatasetIntelligenceService:
 
         dist_deltas: dict[str, int] = {}
         for c in prof_b.class_distribution:
-            cnt_a = next((ca.annotation_count for ca in prof_a.class_distribution if ca.class_name == c.class_name), 0)
+            cnt_a = next(
+                (
+                    ca.annotation_count
+                    for ca in prof_a.class_distribution
+                    if ca.class_name == c.class_name
+                ),
+                0,
+            )
             dist_deltas[c.class_name] = c.annotation_count - cnt_a
 
-        samples_added = [f"sample_add_{i:03d}" for i in range(max(0, sample_delta))] if sample_delta > 0 else []
-        samples_removed = [f"sample_rem_{i:03d}" for i in range(abs(sample_delta))] if sample_delta < 0 else []
+        samples_added = (
+            [f"sample_add_{i:03d}" for i in range(max(0, sample_delta))] if sample_delta > 0 else []
+        )
+        samples_removed = (
+            [f"sample_rem_{i:03d}" for i in range(abs(sample_delta))] if sample_delta < 0 else []
+        )
 
         summary = f"Version '{version_b}' has {sample_delta:+d} samples, {anno_delta:+d} annotations, and {len(classes_added)} new classes compared to '{version_a}'."
 
@@ -450,8 +467,15 @@ class DatasetIntelligenceService:
             max_height=1080,
             mean_height=720.0,
             mean_aspect_ratio=1.78,
-            format_distribution={"jpg": int(total_samples * 0.88), "png": int(total_samples * 0.12)},
-            resolution_bins={"1080p (FHD)": int(total_samples * 0.55), "720p (HD)": int(total_samples * 0.35), "480p": int(total_samples * 0.10)},
+            format_distribution={
+                "jpg": int(total_samples * 0.88),
+                "png": int(total_samples * 0.12),
+            },
+            resolution_bins={
+                "1080p (FHD)": int(total_samples * 0.55),
+                "720p (HD)": int(total_samples * 0.35),
+                "480p": int(total_samples * 0.10),
+            },
             total_size_bytes=total_samples * 450 * 1024,
         )
 
@@ -460,17 +484,34 @@ class DatasetIntelligenceService:
             mean_boxes_per_image=round(total_annos / total_samples, 2),
             max_boxes_per_image=12,
             mean_box_relative_area=0.085,
-            size_distribution={"tiny": int(total_annos * 0.05), "small": int(total_annos * 0.25), "medium": int(total_annos * 0.55), "large": int(total_annos * 0.15)},
+            size_distribution={
+                "tiny": int(total_annos * 0.05),
+                "small": int(total_annos * 0.25),
+                "medium": int(total_annos * 0.55),
+                "large": int(total_annos * 0.15),
+            },
         )
 
         coocs = [
-            ClassCooccurrence(class_a="person", class_b="helmet", cooccurrence_count=2450, cooccurrence_rate=0.72),
-            ClassCooccurrence(class_a="person", class_b="vest", cooccurrence_count=1520, cooccurrence_rate=0.45),
-            ClassCooccurrence(class_a="helmet", class_b="vest", cooccurrence_count=1210, cooccurrence_rate=0.38),
-            ClassCooccurrence(class_a="person", class_b="gloves", cooccurrence_count=160, cooccurrence_rate=0.05),
+            ClassCooccurrence(
+                class_a="person", class_b="helmet", cooccurrence_count=2450, cooccurrence_rate=0.72
+            ),
+            ClassCooccurrence(
+                class_a="person", class_b="vest", cooccurrence_count=1520, cooccurrence_rate=0.45
+            ),
+            ClassCooccurrence(
+                class_a="helmet", class_b="vest", cooccurrence_count=1210, cooccurrence_rate=0.38
+            ),
+            ClassCooccurrence(
+                class_a="person", class_b="gloves", cooccurrence_count=160, cooccurrence_rate=0.05
+            ),
         ]
 
-        splits = {"train": int(total_samples * 0.70), "val": int(total_samples * 0.15), "test": int(total_samples * 0.15)}
+        splits = {
+            "train": int(total_samples * 0.70),
+            "val": int(total_samples * 0.15),
+            "test": int(total_samples * 0.15),
+        }
         split_pcts = {"train": 70.0, "val": 15.0, "test": 15.0}
 
         issues = self._build_synthetic_quality_issues(dataset_id)
@@ -592,8 +633,16 @@ class DatasetIntelligenceService:
                 image_path=f"/datasets/{dataset_id}/images/test/img_0301.jpg",
                 split="test",
                 prioritization_score=0.88,
-                signals={"eval_failure_signal": 0.85, "confidence_gap_signal": 0.90, "annotation_complexity_signal": 0.80},
-                failure_reasons=["Produced 2 benchmark localization errors", "Low prediction confidence (0.42)", "High occlusions"],
+                signals={
+                    "eval_failure_signal": 0.85,
+                    "confidence_gap_signal": 0.90,
+                    "annotation_complexity_signal": 0.80,
+                },
+                failure_reasons=[
+                    "Produced 2 benchmark localization errors",
+                    "Low prediction confidence (0.42)",
+                    "High occlusions",
+                ],
                 ground_truth_classes=["person", "helmet", "vest"],
                 predicted_classes=["person", "head"],
             ),
@@ -602,8 +651,15 @@ class DatasetIntelligenceService:
                 image_path=f"/datasets/{dataset_id}/images/train/img_0412.jpg",
                 split="train",
                 prioritization_score=0.74,
-                signals={"eval_failure_signal": 0.70, "confidence_gap_signal": 0.80, "annotation_complexity_signal": 0.65},
-                failure_reasons=["Misclassification between helmet and head", "Low lighting contrast"],
+                signals={
+                    "eval_failure_signal": 0.70,
+                    "confidence_gap_signal": 0.80,
+                    "annotation_complexity_signal": 0.65,
+                },
+                failure_reasons=[
+                    "Misclassification between helmet and head",
+                    "Low lighting contrast",
+                ],
                 ground_truth_classes=["helmet"],
                 predicted_classes=["head"],
             ),
@@ -612,7 +668,11 @@ class DatasetIntelligenceService:
                 image_path=f"/datasets/{dataset_id}/images/val/img_0722.jpg",
                 split="val",
                 prioritization_score=0.68,
-                signals={"eval_failure_signal": 0.60, "confidence_gap_signal": 0.75, "annotation_complexity_signal": 0.60},
+                signals={
+                    "eval_failure_signal": 0.60,
+                    "confidence_gap_signal": 0.75,
+                    "annotation_complexity_signal": 0.60,
+                },
                 failure_reasons=["Rare class 'gloves' missed detection"],
                 ground_truth_classes=["gloves"],
                 predicted_classes=[],

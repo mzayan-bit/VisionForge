@@ -120,19 +120,27 @@ def build_candidate_explanation(
         reasons.append(f"Moderate confidence ambiguity ({signals.uncertainty_score:.2f})")
 
     if signals.diversity_score > 0.60:
-        reasons.append(f"High visual coverage dispersion (farthest-point distance: {signals.diversity_score:.2f})")
+        reasons.append(
+            f"High visual coverage dispersion (farthest-point distance: {signals.diversity_score:.2f})"
+        )
 
     if signals.failure_score > 0.40:
-        reasons.append(f"High relevance to past benchmark failure modes ({signals.failure_score:.2f})")
+        reasons.append(
+            f"High relevance to past benchmark failure modes ({signals.failure_score:.2f})"
+        )
 
     if class_rarity:
         reasons.append("Contains underrepresented rare class sample (< 5% dataset prevalence)")
 
     if disagreement:
-        reasons.append("Baseline and candidate models produced conflicting predictions or localization deltas")
+        reasons.append(
+            "Baseline and candidate models produced conflicting predictions or localization deltas"
+        )
 
     if not reasons:
-        reasons.append(f"Prioritized under {strategy.value} sampling strategy (score: {signals.composite_score:.2f})")
+        reasons.append(
+            f"Prioritized under {strategy.value} sampling strategy (score: {signals.composite_score:.2f})"
+        )
 
     return CandidateExplanation(
         composite_priority=signals.composite_score,
@@ -266,7 +274,9 @@ def rank_candidate_samples(
                 composite_score=signals.composite_score,
                 signals=signals,
                 explanation=explanation,
-                recommendation_reason="; ".join(explanation.plain_text_reasons) if explanation.plain_text_reasons else f"Selected under {strategy.value}",
+                recommendation_reason="; ".join(explanation.plain_text_reasons)
+                if explanation.plain_text_reasons
+                else f"Selected under {strategy.value}",
                 ground_truth_boxes=gts,
                 predicted_boxes=preds,
                 predicted_class=top_pred.get("class_name"),

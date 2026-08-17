@@ -30,16 +30,17 @@ def calculate_iou_boxes(box_a: list[float], box_b: list[float], format: str = "a
     - 'xywh': [x_center, y_center, width, height]
     - 'auto': automatically detects if boxes are in center-width-height format
     """
-    is_xywh = (
-        format == "xywh"
-        or (
-            format == "auto"
-            and (
-                box_a[2] < box_a[0]
-                or box_b[2] < box_b[0]
-                or box_a[3] < box_a[1]
-                or box_b[3] < box_b[1]
-                or (max(box_a) <= 1.0 and max(box_b) <= 1.0 and min(box_a[2], box_a[3]) < min(box_a[0], box_a[1]))
+    is_xywh = format == "xywh" or (
+        format == "auto"
+        and (
+            box_a[2] < box_a[0]
+            or box_b[2] < box_b[0]
+            or box_a[3] < box_a[1]
+            or box_b[3] < box_b[1]
+            or (
+                max(box_a) <= 1.0
+                and max(box_b) <= 1.0
+                and min(box_a[2], box_a[3]) < min(box_a[0], box_a[1])
             )
         )
     )
@@ -77,7 +78,9 @@ def calculate_iou_boxes(box_a: list[float], box_b: list[float], format: str = "a
     return float(inter_area / union_area)
 
 
-def compute_ap_from_pr(recalls: list[float], precisions: list[float], num_points: int = 101) -> float:
+def compute_ap_from_pr(
+    recalls: list[float], precisions: list[float], num_points: int = 101
+) -> float:
     """Calculate Average Precision (AP) via COCO 101-point or VOC 11-point interpolation."""
     if not recalls or not precisions or len(recalls) != len(precisions):
         return 0.0
@@ -221,7 +224,9 @@ def evaluate_detections(
             # Record default IoU curve points and default TP/FP counts
             if abs(iou_th - iou_threshold) < 1e-4:
                 # Filter by confidence threshold for default operating point
-                valid_indices = [i for i, cp in enumerate(class_preds) if cp[1] >= confidence_threshold]
+                valid_indices = [
+                    i for i, cp in enumerate(class_preds) if cp[1] >= confidence_threshold
+                ]
                 c_tp_at_default = int(np.sum(tp[valid_indices])) if valid_indices else 0
                 c_fp_at_default = int(np.sum(fp[valid_indices])) if valid_indices else 0
 

@@ -32,19 +32,31 @@ class VisualAsset(BaseModel):
     embedding_version: str = Field(
         default="1.0.0", description="Embedding model architecture version"
     )
-    source_video_id: str | None = Field(default=None, description="Video asset ID if frame/object/event")
+    source_video_id: str | None = Field(
+        default=None, description="Video asset ID if frame/object/event"
+    )
     source_dataset_id: str | None = Field(default=None, description="Dataset ID if dataset sample")
-    source_run_id: str | None = Field(default=None, description="Inference run ID if video detection/track")
-    source_event_id: str | None = Field(default=None, description="Event ID if event moment/evidence")
-    timestamp_sec: float | None = Field(default=None, description="Timestamp in video timeline in seconds")
+    source_run_id: str | None = Field(
+        default=None, description="Inference run ID if video detection/track"
+    )
+    source_event_id: str | None = Field(
+        default=None, description="Event ID if event moment/evidence"
+    )
+    timestamp_sec: float | None = Field(
+        default=None, description="Timestamp in video timeline in seconds"
+    )
     frame_idx: int | None = Field(default=None, description="Frame index in video sequence")
     track_id: int | None = Field(default=None, description="Persistent Track ID if object crop")
     bbox: list[float] | None = Field(
         default=None, description="Bounding box [x1, y1, x2, y2] in pixels if object crop"
     )
     class_name: str | None = Field(default=None, description="Class label if classified/detected")
-    thumbnail_url: str | None = Field(default=None, description="Visual thumbnail URI or base64 preview")
-    metadata: dict[str, Any] = Field(default_factory=dict, description="Additional arbitrary metadata")
+    thumbnail_url: str | None = Field(
+        default=None, description="Visual thumbnail URI or base64 preview"
+    )
+    metadata: dict[str, Any] = Field(
+        default_factory=dict, description="Additional arbitrary metadata"
+    )
     indexed_at: str = Field(
         default_factory=lambda: datetime.now(UTC).isoformat(),
         description="ISO 8601 indexing timestamp",
@@ -57,15 +69,27 @@ class UnifiedSearchRequest(BaseModel):
     query_type: VisualAssetType | str = Field(
         default=VisualAssetType.IMAGE, description="Source type of the query asset"
     )
-    asset_id: str | None = Field(default=None, description="Existing VisualAsset ID to use as query")
-    video_id: str | None = Field(default=None, description="Target video asset ID if querying by frame")
+    asset_id: str | None = Field(
+        default=None, description="Existing VisualAsset ID to use as query"
+    )
+    video_id: str | None = Field(
+        default=None, description="Target video asset ID if querying by frame"
+    )
     timestamp_sec: float | None = Field(
         default=None, description="Target timestamp in seconds if querying by frame/moment"
     )
-    run_id: str | None = Field(default=None, description="Target inference run ID if querying by track/object")
-    track_id: int | None = Field(default=None, description="Target track ID if querying by object crop")
-    event_id: str | None = Field(default=None, description="Target event ID if querying by event moment")
-    dataset_id: str | None = Field(default=None, description="Target dataset ID if querying by dataset sample")
+    run_id: str | None = Field(
+        default=None, description="Target inference run ID if querying by track/object"
+    )
+    track_id: int | None = Field(
+        default=None, description="Target track ID if querying by object crop"
+    )
+    event_id: str | None = Field(
+        default=None, description="Target event ID if querying by event moment"
+    )
+    dataset_id: str | None = Field(
+        default=None, description="Target dataset ID if querying by dataset sample"
+    )
     sample_id: str | None = Field(default=None, description="Target sample ID in dataset")
     vector: list[float] | None = Field(default=None, description="Direct dense query vector (768D)")
     filter_asset_types: list[VisualAssetType] | None = Field(
@@ -100,9 +124,12 @@ class UnifiedSearchResultItem(BaseModel):
     similarity_score: float = Field(description="Calculated similarity score in range [0.0, 1.0]")
     distance: float = Field(description="Calculated vector distance")
     source_traceability: dict[str, Any] = Field(
-        default_factory=dict, description="Source provenance metadata (dataset, video, run, event, frame)"
+        default_factory=dict,
+        description="Source provenance metadata (dataset, video, run, event, frame)",
     )
-    action_link: str = Field(description="Frontend navigation link (e.g. '/video-lab?seek=14.2&track=17')")
+    action_link: str = Field(
+        description="Frontend navigation link (e.g. '/video-lab?seek=14.2&track=17')"
+    )
     evidence_notes: str = Field(description="Transparent description of matching provenance")
 
 
@@ -115,7 +142,9 @@ class UnifiedSearchResponse(BaseModel):
         description="ISO query execution timestamp",
     )
     query_summary: str = Field(description="Human-readable description of the query input")
-    query_asset: VisualAsset | None = Field(default=None, description="Resolved query asset details")
+    query_asset: VisualAsset | None = Field(
+        default=None, description="Resolved query asset details"
+    )
     results: list[UnifiedSearchResultItem] = Field(description="Ranked top-K visual asset matches")
     candidate_count: int = Field(description="Total visual memory assets evaluated")
     returned_count: int = Field(description="Total matches satisfying filters and cutoff threshold")
@@ -155,7 +184,9 @@ class NearDuplicateResponse(BaseModel):
     """Response document for near-duplicate candidate discovery."""
 
     total_evaluated: int = Field(description="Number of assets evaluated for near-duplicates")
-    duplicate_pairs_found: int = Field(description="Number of candidate near-duplicate pairs identified")
+    duplicate_pairs_found: int = Field(
+        description="Number of candidate near-duplicate pairs identified"
+    )
     pairs: list[NearDuplicatePair] = Field(description="List of candidate near-duplicate pairs")
     threshold_used: float = Field(description="Cosine similarity cutoff threshold used (e.g. 0.95)")
     execution_time_ms: float = Field(description="Total discovery latency in milliseconds")

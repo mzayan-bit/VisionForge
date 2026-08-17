@@ -38,7 +38,10 @@ def detect_data_leakage(
     hash_to_samples: dict[str, list[str]] = {}
     for rec in records:
         meta: dict[str, Any] = rec.image_metadata or {}
-        raw_sig = meta.get("content_hash") or f"{meta.get('width')}_{meta.get('height')}_{meta.get('file_size_bytes')}_{rec.id}"
+        raw_sig = (
+            meta.get("content_hash")
+            or f"{meta.get('width')}_{meta.get('height')}_{meta.get('file_size_bytes')}_{rec.id}"
+        )
         sig_hash = hashlib.sha256(raw_sig.encode("utf-8")).hexdigest()
 
         if sig_hash not in hash_to_samples:

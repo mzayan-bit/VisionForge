@@ -281,7 +281,9 @@ class ExperimentService:
                     metadata={
                         "dataset_id": exp.dataset_id,
                         "version": exp.dataset_version,
-                        "fingerprint": exp.dataset_fingerprint.fingerprint_hash if exp.dataset_fingerprint else None,
+                        "fingerprint": exp.dataset_fingerprint.fingerprint_hash
+                        if exp.dataset_fingerprint
+                        else None,
                     },
                     route_link="/datasets",
                 )
@@ -541,13 +543,17 @@ class ExperimentService:
         if exp.dataset_id:
             passed.append(f"Dataset reference '{exp.dataset_id}' recorded.")
             if exp.dataset_fingerprint:
-                passed.append(f"Dataset fingerprint verified ({exp.dataset_fingerprint.fingerprint_hash[:12]}...).")
+                passed.append(
+                    f"Dataset fingerprint verified ({exp.dataset_fingerprint.fingerprint_hash[:12]}...)."
+                )
         else:
             failed.append("No target dataset ID linked.")
 
         # 2. Environment check
         if exp.environment_snapshot and exp.environment_snapshot.git_commit_sha:
-            passed.append(f"Git commit SHA verified ({exp.environment_snapshot.git_commit_sha[:8]}).")
+            passed.append(
+                f"Git commit SHA verified ({exp.environment_snapshot.git_commit_sha[:8]})."
+            )
         else:
             failed.append("Git commit SHA missing.")
 
@@ -592,7 +598,9 @@ class ExperimentService:
         rep_exp.parent_experiment_id = exp_id
         rep_exp.training_config_snapshot = parent_exp.training_config_snapshot
         self.save_to_disk()
-        logger.info("Created reproduction experiment '%s' from parent '%s'", rep_exp.experiment_id, exp_id)
+        logger.info(
+            "Created reproduction experiment '%s' from parent '%s'", rep_exp.experiment_id, exp_id
+        )
         return rep_exp
 
     def generate_experiment_report(self, exp_id: str) -> str:

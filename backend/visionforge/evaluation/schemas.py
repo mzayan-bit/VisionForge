@@ -58,9 +58,13 @@ class PerClassMetrics(BaseModel):
     f1: float = Field(default=0.0, description="Harmonic mean F1 score")
     map50: float = Field(default=0.0, description="Average Precision at IoU=0.50 (AP@50)")
     map75: float = Field(default=0.0, description="Average Precision at IoU=0.75 (AP@75)")
-    map50_95: float = Field(default=0.0, description="Mean Average Precision across IoU=[0.50:0.95] (AP@[.5:.95])")
+    map50_95: float = Field(
+        default=0.0, description="Mean Average Precision across IoU=[0.50:0.95] (AP@[.5:.95])"
+    )
     support: int = Field(default=0, description="Ground truth annotation count for this class")
-    predictions_count: int = Field(default=0, description="Total predictions emitted for this class")
+    predictions_count: int = Field(
+        default=0, description="Total predictions emitted for this class"
+    )
     true_positives: int = Field(default=0, description="True positive detection count")
     false_positives: int = Field(default=0, description="False positive detection count")
     false_negatives: int = Field(default=0, description="False negative missed object count")
@@ -72,7 +76,9 @@ class PerClassMetrics(BaseModel):
 class ThresholdPoint(BaseModel):
     """Metrics evaluated at a specific confidence threshold operating point."""
 
-    confidence_threshold: float = Field(description="Confidence threshold evaluated (e.g. 0.20, 0.30, ...)")
+    confidence_threshold: float = Field(
+        description="Confidence threshold evaluated (e.g. 0.20, 0.30, ...)"
+    )
     precision: float = Field(description="Precision at this threshold")
     recall: float = Field(description="Recall at this threshold")
     f1: float = Field(description="F1 score at this threshold")
@@ -101,7 +107,9 @@ class ConfusionPair(BaseModel):
     ground_truth_class: str = Field(description="Actual ground truth class label")
     predicted_class: str = Field(description="Incorrectly predicted class label")
     count: int = Field(default=0, description="Number of instances confused")
-    mean_confidence: float = Field(default=0.0, description="Average confidence of confused predictions")
+    mean_confidence: float = Field(
+        default=0.0, description="Average confidence of confused predictions"
+    )
     mean_iou: float = Field(default=0.0, description="Average IoU of confused bounding boxes")
     sample_ids: list[str] = Field(default_factory=list, description="Associated image sample IDs")
 
@@ -120,22 +128,50 @@ class ConfusionMatrixData(BaseModel):
 class RuntimeMetrics(BaseModel):
     """Comprehensive latency and throughput hardware execution profile."""
 
-    warmup_iterations: int = Field(default=5, description="Number of warm-up iterations excluded from timing")
-    evaluated_iterations: int = Field(default=30, description="Number of steady-state iterations benchmarked")
+    warmup_iterations: int = Field(
+        default=5, description="Number of warm-up iterations excluded from timing"
+    )
+    evaluated_iterations: int = Field(
+        default=30, description="Number of steady-state iterations benchmarked"
+    )
     preprocess_ms_mean: float = Field(default=0.0, description="Mean preprocessing latency in ms")
-    preprocess_ms_p95: float = Field(default=0.0, description="95th percentile preprocessing latency in ms")
-    inference_ms_mean: float = Field(default=0.0, description="Mean model forward pass latency in ms")
-    inference_ms_median: float = Field(default=0.0, description="Median model forward pass latency in ms")
-    inference_ms_p95: float = Field(default=0.0, description="95th percentile model forward pass latency in ms")
-    postprocess_ms_mean: float = Field(default=0.0, description="Mean postprocessing/NMS latency in ms")
-    postprocess_ms_p95: float = Field(default=0.0, description="95th percentile postprocessing/NMS latency in ms")
-    total_latency_ms_mean: float = Field(default=0.0, description="Mean total end-to-end latency in ms")
-    total_latency_ms_p95: float = Field(default=0.0, description="95th percentile total latency in ms")
-    throughput_fps: float = Field(default=0.0, description="Steady-state throughput (Frames/Images Per Second)")
-    model_parameters_m: float | None = Field(default=None, description="Model parameter count in Millions")
-    model_size_mb: float | None = Field(default=None, description="Model checkpoint file size in MB")
+    preprocess_ms_p95: float = Field(
+        default=0.0, description="95th percentile preprocessing latency in ms"
+    )
+    inference_ms_mean: float = Field(
+        default=0.0, description="Mean model forward pass latency in ms"
+    )
+    inference_ms_median: float = Field(
+        default=0.0, description="Median model forward pass latency in ms"
+    )
+    inference_ms_p95: float = Field(
+        default=0.0, description="95th percentile model forward pass latency in ms"
+    )
+    postprocess_ms_mean: float = Field(
+        default=0.0, description="Mean postprocessing/NMS latency in ms"
+    )
+    postprocess_ms_p95: float = Field(
+        default=0.0, description="95th percentile postprocessing/NMS latency in ms"
+    )
+    total_latency_ms_mean: float = Field(
+        default=0.0, description="Mean total end-to-end latency in ms"
+    )
+    total_latency_ms_p95: float = Field(
+        default=0.0, description="95th percentile total latency in ms"
+    )
+    throughput_fps: float = Field(
+        default=0.0, description="Steady-state throughput (Frames/Images Per Second)"
+    )
+    model_parameters_m: float | None = Field(
+        default=None, description="Model parameter count in Millions"
+    )
+    model_size_mb: float | None = Field(
+        default=None, description="Model checkpoint file size in MB"
+    )
     device: str = Field(default="cpu", description="Execution device (e.g. 'cpu', 'cuda:0', 'mps')")
-    device_name: str = Field(default="Generic CPU", description="Human readable hardware descriptor")
+    device_name: str = Field(
+        default="Generic CPU", description="Human readable hardware descriptor"
+    )
 
 
 class FailureSampleDetail(BaseModel):
@@ -155,10 +191,18 @@ class FailureSampleDetail(BaseModel):
     dataset_id: str = Field(default="safety_v2", description="Dataset identifier")
     dataset_version: str = Field(default="v1.0.0", description="Dataset version tag")
     split: str = Field(default="test", description="Dataset split evaluated ('test', 'val')")
-    image_size: list[int] = Field(default_factory=lambda: [1280, 720], description="Image dimensions [W, H]")
-    object_size_category: str = Field(default="medium", description="'small' (<32^2), 'medium', 'large' (>96^2)")
-    gt_bbox: list[float] | None = Field(default=None, description="Ground truth bounding box [x1, y1, x2, y2]")
-    pred_bbox: list[float] | None = Field(default=None, description="Predicted bounding box [x1, y1, x2, y2]")
+    image_size: list[int] = Field(
+        default_factory=lambda: [1280, 720], description="Image dimensions [W, H]"
+    )
+    object_size_category: str = Field(
+        default="medium", description="'small' (<32^2), 'medium', 'large' (>96^2)"
+    )
+    gt_bbox: list[float] | None = Field(
+        default=None, description="Ground truth bounding box [x1, y1, x2, y2]"
+    )
+    pred_bbox: list[float] | None = Field(
+        default=None, description="Predicted bounding box [x1, y1, x2, y2]"
+    )
     nearby_ground_truths: list[dict[str, Any]] = Field(
         default_factory=list, description="Other GT bounding boxes in same image"
     )
@@ -172,13 +216,18 @@ class FailureSampleDetail(BaseModel):
         default_factory=list, description="768D visual embedding sample preview"
     )
     dataset_quality_flags: list[str] = Field(
-        default_factory=list, description="Dataset quality notes (e.g. 'crowded_scene', 'low_contrast')"
+        default_factory=list,
+        description="Dataset quality notes (e.g. 'crowded_scene', 'low_contrast')",
     )
     review_priority: float = Field(
-        default=0.5, ge=0.0, le=1.0, description="Priority score = 0.40*(1-conf) + 0.35*(1-iou) + 0.25*err_weight"
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Priority score = 0.40*(1-conf) + 0.35*(1-iou) + 0.25*err_weight",
     )
     review_status: str = Field(
-        default="UNREVIEWED", description="'UNREVIEWED', 'CONFIRMED_ERROR', 'ANNOTATION_ISSUE', 'VALID_HARD_EXAMPLE', 'SKIPPED'"
+        default="UNREVIEWED",
+        description="'UNREVIEWED', 'CONFIRMED_ERROR', 'ANNOTATION_ISSUE', 'VALID_HARD_EXAMPLE', 'SKIPPED'",
     )
     notes: str = Field(default="", description="Reviewer notes")
     created_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
@@ -203,14 +252,18 @@ class VisualFailureCluster(BaseModel):
     primary_error_types: dict[str, int] = Field(
         default_factory=dict, description="Distribution of error types in this cluster"
     )
-    avg_confidence: float = Field(default=0.0, description="Average confidence of failures in cluster")
+    avg_confidence: float = Field(
+        default=0.0, description="Average confidence of failures in cluster"
+    )
     avg_iou: float = Field(default=0.0, description="Average IoU of failures in cluster")
 
 
 class ObjectSizePerformance(BaseModel):
     """Detection performance broken down by bounding box pixel area."""
 
-    size_category: str = Field(description="'small' (area < 32^2), 'medium' (32^2 <= area <= 96^2), 'large' (area > 96^2)")
+    size_category: str = Field(
+        description="'small' (area < 32^2), 'medium' (32^2 <= area <= 96^2), 'large' (area > 96^2)"
+    )
     area_range_px: str = Field(description="Pixel area description")
     gt_count: int = Field(description="Total GT objects in this size category")
     prediction_count: int = Field(description="Total predictions for this size")
@@ -268,15 +321,21 @@ class PRCurveData(BaseModel):
 class EvaluationConfig(BaseModel):
     """Configuration for an evaluation and benchmarking run."""
 
-    iou_threshold: float = Field(default=0.5, ge=0.1, le=0.95, description="IoU threshold for considering detection valid")
-    confidence_threshold: float = Field(default=0.25, ge=0.01, le=0.95, description="Confidence threshold for predictions")
+    iou_threshold: float = Field(
+        default=0.5, ge=0.1, le=0.95, description="IoU threshold for considering detection valid"
+    )
+    confidence_threshold: float = Field(
+        default=0.25, ge=0.01, le=0.95, description="Confidence threshold for predictions"
+    )
     nms_iou_threshold: float = Field(default=0.45, ge=0.1, le=0.95, description="NMS IoU threshold")
     img_size: int = Field(default=640, description="Input image size (pixels)")
     batch_size: int = Field(default=1, ge=1, le=64, description="Evaluation batch size")
     device: str = Field(default="cpu", description="Compute device ('cpu', 'cuda', 'mps')")
     fp16: bool = Field(default=False, description="Half-precision floating point mode")
     random_seed: int = Field(default=42, description="Random seed for reproducibility")
-    warmup_iterations: int = Field(default=5, ge=0, le=50, description="Warm-up iterations before runtime profiling")
+    warmup_iterations: int = Field(
+        default=5, ge=0, le=50, description="Warm-up iterations before runtime profiling"
+    )
 
 
 class BenchmarkDatasetSnapshot(BaseModel):
@@ -285,10 +344,14 @@ class BenchmarkDatasetSnapshot(BaseModel):
     dataset_id: str = Field(description="Dataset identifier")
     dataset_version: str = Field(description="Dataset version identifier")
     dataset_fingerprint: str = Field(description="Cryptographic SHA-256 fingerprint of dataset")
-    split_used: str = Field(default="test", description="Dataset split evaluated ('test', 'val', 'train')")
+    split_used: str = Field(
+        default="test", description="Dataset split evaluated ('test', 'val', 'train')"
+    )
     total_images: int = Field(default=0, description="Total image samples in evaluated split")
     total_annotations: int = Field(default=0, description="Total bounding box annotations")
-    class_distribution: dict[str, int] = Field(default_factory=dict, description="Annotation count per class")
+    class_distribution: dict[str, int] = Field(
+        default_factory=dict, description="Annotation count per class"
+    )
 
 
 class EvaluationRun(BaseModel):
@@ -333,15 +396,31 @@ class BenchmarkRun(BaseModel):
     description: str = Field(default="", description="Benchmark description or research objective")
     task: str = Field(default="OBJECT_DETECTION", description="Computer vision task evaluated")
     model_name: str = Field(description="Evaluated model name")
-    model_version: str = Field(default="1.0.0", description="Model architecture or checkpoint version")
-    checkpoint_path: str | None = Field(default=None, description="Path to evaluated model checkpoint file")
-    is_baseline: bool = Field(default=False, description="Whether this benchmark serves as a baseline reference")
-    baseline_benchmark_id: str | None = Field(default=None, description="ID of baseline benchmark if candidate")
-    dataset_snapshot: BenchmarkDatasetSnapshot = Field(description="Immutable dataset snapshot evaluated")
+    model_version: str = Field(
+        default="1.0.0", description="Model architecture or checkpoint version"
+    )
+    checkpoint_path: str | None = Field(
+        default=None, description="Path to evaluated model checkpoint file"
+    )
+    is_baseline: bool = Field(
+        default=False, description="Whether this benchmark serves as a baseline reference"
+    )
+    baseline_benchmark_id: str | None = Field(
+        default=None, description="ID of baseline benchmark if candidate"
+    )
+    dataset_snapshot: BenchmarkDatasetSnapshot = Field(
+        description="Immutable dataset snapshot evaluated"
+    )
     config: EvaluationConfig = Field(description="Evaluation hyperparameters and settings")
-    status: EvaluationStatus = Field(default=EvaluationStatus.CREATED, description="Execution lifecycle status")
-    metrics: DetectionMetrics = Field(default_factory=DetectionMetrics, description="Aggregate detection metrics")
-    per_class_metrics: list[PerClassMetrics] = Field(default_factory=list, description="Per-class metric breakdowns")
+    status: EvaluationStatus = Field(
+        default=EvaluationStatus.CREATED, description="Execution lifecycle status"
+    )
+    metrics: DetectionMetrics = Field(
+        default_factory=DetectionMetrics, description="Aggregate detection metrics"
+    )
+    per_class_metrics: list[PerClassMetrics] = Field(
+        default_factory=list, description="Per-class metric breakdowns"
+    )
     threshold_analysis: list[ThresholdPoint] = Field(
         default_factory=list, description="Confidence threshold operating points"
     )
@@ -356,14 +435,16 @@ class BenchmarkRun(BaseModel):
         default_factory=dict, description="Counts per diagnostic error category"
     )
     reproducibility: dict[str, Any] = Field(
-        default_factory=dict, description="Environment snapshot, git commit SHA, and randomness seeds"
+        default_factory=dict,
+        description="Environment snapshot, git commit SHA, and randomness seeds",
     )
     experiment_id: str | None = Field(default=None, description="Experiment reference ID if linked")
     artifacts: list[dict[str, Any]] = Field(
         default_factory=list, description="Generated artifacts (metrics.json, report.md, etc.)"
     )
     created_at: str = Field(
-        default_factory=lambda: datetime.now(UTC).isoformat(), description="Benchmark creation timestamp"
+        default_factory=lambda: datetime.now(UTC).isoformat(),
+        description="Benchmark creation timestamp",
     )
     completed_at: str | None = Field(default=None, description="Benchmark completion timestamp")
 
@@ -381,13 +462,16 @@ class ModelComparisonResult(BaseModel):
         default_factory=list, description="Reasons if comparison violates scientific control"
     )
     metric_deltas: dict[str, dict[str, float]] = Field(
-        default_factory=dict, description="Metric -> {'baseline': x, 'candidate': y, 'delta_abs': d, 'delta_rel_pct': p}"
+        default_factory=dict,
+        description="Metric -> {'baseline': x, 'candidate': y, 'delta_abs': d, 'delta_rel_pct': p}",
     )
     per_class_deltas: dict[str, dict[str, float]] = Field(
-        default_factory=dict, description="Class -> {'map50_delta': d, 'recall_delta': d, 'precision_delta': d}"
+        default_factory=dict,
+        description="Class -> {'map50_delta': d, 'recall_delta': d, 'precision_delta': d}",
     )
     failure_deltas: dict[str, dict[str, int]] = Field(
-        default_factory=dict, description="Error category -> {'baseline_count': b, 'candidate_count': c, 'delta': c - b}"
+        default_factory=dict,
+        description="Error category -> {'baseline_count': b, 'candidate_count': c, 'delta': c - b}",
     )
     regression_status: RegressionStatus = Field(
         default=RegressionStatus.NEUTRAL, description="Automated regression determination"
@@ -399,7 +483,8 @@ class ModelComparisonResult(BaseModel):
         default_factory=dict, description="Fixed vs new vs persistent failure counts"
     )
     disagreement_samples: list[dict[str, Any]] = Field(
-        default_factory=list, description="List of samples where model predictions significantly disagree"
+        default_factory=list,
+        description="List of samples where model predictions significantly disagree",
     )
     timestamp: str = Field(
         default_factory=lambda: datetime.now(UTC).isoformat(), description="Comparison timestamp"

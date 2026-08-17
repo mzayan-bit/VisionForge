@@ -144,7 +144,9 @@ class QueryInterpreter:
                 break
         if not matched_region:
             # Fallback regex for Zone A / Zone B / Loading Zone
-            zone_match = re.search(r"(zone\s+[a-z0-9_]+|loading zone|restricted corridor)", lower_text)
+            zone_match = re.search(
+                r"(zone\s+[a-z0-9_]+|loading zone|restricted corridor)", lower_text
+            )
             if zone_match:
                 matched_region = zone_match.group(1).title()
 
@@ -186,7 +188,8 @@ class QueryInterpreter:
 
         # 9. Extract Duration Threshold filter (e.g. "longer than 5 seconds", "more than 5s")
         dur_match = re.search(
-            r"(?:longer than|more than|exceeding|>\s+|>)\s*(\d+(?:\.\d+)?)\s*(?:seconds|sec|s\b)", lower_text
+            r"(?:longer than|more than|exceeding|>\s+|>)\s*(\d+(?:\.\d+)?)\s*(?:seconds|sec|s\b)",
+            lower_text,
         )
         if dur_match:
             vq.min_duration_sec = float(dur_match.group(1))
@@ -194,7 +197,11 @@ class QueryInterpreter:
 
         # 10. Infer Query Type & Aggregations
         if "how many" in lower_text or "count" in lower_text:
-            if vq.at_timestamp_sec is not None or "visible" in lower_text or "present" in lower_text:
+            if (
+                vq.at_timestamp_sec is not None
+                or "visible" in lower_text
+                or "present" in lower_text
+            ):
                 vq.query_type = QueryType.OBJECT_COUNT
                 vq.aggregation = AggregationType.COUNT
             else:

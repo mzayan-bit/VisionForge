@@ -132,13 +132,17 @@ def test_training_service_end_to_end(tmp_path):
     prep_dir = tmp_path / "datasets" / "prepared" / "prep_e2e_123"
     prep_dir.mkdir(parents=True, exist_ok=True)
     import json
+
     (prep_dir / "manifest.json").write_text(json.dumps(manifest.model_dump()), encoding="utf-8")
 
     from visionforge.datasets.service import DatasetPreparationService
+
     ds_svc = DatasetPreparationService(history_store=prep_history)
     prep_history._manifests["prep_e2e_123"] = manifest
 
-    svc = TrainingService(dataset_service=ds_svc, model_manager=model_mgr, history_store=train_history)
+    svc = TrainingService(
+        dataset_service=ds_svc, model_manager=model_mgr, history_store=train_history
+    )
     cfg = TrainingConfig(
         dataset_id="safety_v2",
         preparation_id="prep_e2e_123",

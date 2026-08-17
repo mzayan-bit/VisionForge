@@ -69,7 +69,9 @@ def get_dataset_health(
     """Retrieve dataset health scorecard."""
     svc = _get_service()
     profile = svc.get_or_compute_profile(dataset_id=dataset_id, dataset_version=version)
-    return success_response(data=profile.health_summary, message="Dataset health scorecard evaluated")
+    return success_response(
+        data=profile.health_summary, message="Dataset health scorecard evaluated"
+    )
 
 
 @router.get(
@@ -96,7 +98,9 @@ def get_quality_issues(
         limit=limit,
         offset=offset,
     )
-    return success_response(data=issues, message=f"Retrieved {len(issues)} flagged quality issue(s)")
+    return success_response(
+        data=issues, message=f"Retrieved {len(issues)} flagged quality issue(s)"
+    )
 
 
 @router.get(
@@ -111,7 +115,9 @@ def get_cross_split_leakage(
     """Retrieve cross-split leakage pairs."""
     svc = _get_service()
     pairs = svc.get_cross_split_leakage(dataset_id=dataset_id)
-    return success_response(data=pairs, message=f"Retrieved {len(pairs)} cross-split leakage candidate pair(s)")
+    return success_response(
+        data=pairs, message=f"Retrieved {len(pairs)} cross-split leakage candidate pair(s)"
+    )
 
 
 @router.get(
@@ -136,7 +142,9 @@ def get_hard_samples(
         limit=limit,
         offset=offset,
     )
-    return success_response(data=items, message=f"Retrieved {len(items)} prioritized hard sample(s)")
+    return success_response(
+        data=items, message=f"Retrieved {len(items)} prioritized hard sample(s)"
+    )
 
 
 @router.post(
@@ -152,7 +160,11 @@ def submit_curation_decision(
     svc = _get_service()
     svc.record_curation_decision(decision)
     return success_response(
-        data={"review_id": decision.review_id, "sample_id": decision.sample_id, "decision": decision.decision},
+        data={
+            "review_id": decision.review_id,
+            "sample_id": decision.sample_id,
+            "decision": decision.decision,
+        },
         message=f"Recorded review decision '{decision.decision}' for sample '{decision.sample_id}'",
     )
 
@@ -177,7 +189,9 @@ def list_curation_decisions(
         limit=limit,
         offset=offset,
     )
-    return success_response(data=decisions, message=f"Retrieved {len(decisions)} curation review decision(s)")
+    return success_response(
+        data=decisions, message=f"Retrieved {len(decisions)} curation review decision(s)"
+    )
 
 
 @router.post(

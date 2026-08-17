@@ -135,11 +135,15 @@ class Experiment(BaseModel):
         default=None, description="Immutable dataset fingerprint"
     )
     preparation_id: str | None = Field(default=None, description="Dataset preparation ID")
-    training_run_ids: list[str] = Field(default_factory=list, description="Associated training run IDs")
+    training_run_ids: list[str] = Field(
+        default_factory=list, description="Associated training run IDs"
+    )
     model_ids: list[str] = Field(default_factory=list, description="Associated model version IDs")
     evaluation_ids: list[str] = Field(default_factory=list, description="Associated evaluation IDs")
     benchmark_ids: list[str] = Field(default_factory=list, description="Associated benchmark IDs")
-    inference_ids: list[str] = Field(default_factory=list, description="Associated inference run IDs")
+    inference_ids: list[str] = Field(
+        default_factory=list, description="Associated inference run IDs"
+    )
 
     # Immutable Snapshots
     training_config_snapshot: dict[str, Any] | None = Field(
@@ -162,7 +166,8 @@ class Experiment(BaseModel):
         default_factory=lambda: datetime.now(UTC).isoformat(), description="Creation ISO timestamp"
     )
     updated_at: str = Field(
-        default_factory=lambda: datetime.now(UTC).isoformat(), description="Last updated ISO timestamp"
+        default_factory=lambda: datetime.now(UTC).isoformat(),
+        description="Last updated ISO timestamp",
     )
 
 
@@ -185,8 +190,12 @@ class ReproducibilityReport(BaseModel):
 
     experiment_id: str = Field(description="Audited experiment ID")
     is_reproducible: bool = Field(description="Overall reproducibility verification pass status")
-    checks_passed: list[str] = Field(default_factory=list, description="List of passed audit checks")
-    checks_failed: list[str] = Field(default_factory=list, description="List of failed audit checks")
+    checks_passed: list[str] = Field(
+        default_factory=list, description="List of passed audit checks"
+    )
+    checks_failed: list[str] = Field(
+        default_factory=list, description="List of failed audit checks"
+    )
     missing_dependencies: list[str] = Field(
         default_factory=list, description="Missing file/checkpoint dependencies"
     )

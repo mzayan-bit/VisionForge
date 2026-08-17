@@ -89,7 +89,9 @@ class TemporalEventService:
         )
         self._regions[region_id] = region
         self.save_to_disk()
-        logger.info("Created Region of Interest '%s' (%s) for video '%s'", region_id, name, video_id)
+        logger.info(
+            "Created Region of Interest '%s' (%s) for video '%s'", region_id, name, video_id
+        )
         return region
 
     def list_regions(self, video_id: str | None = None) -> list[RegionOfInterest]:
