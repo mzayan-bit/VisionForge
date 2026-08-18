@@ -1127,7 +1127,7 @@ export default function VideoLabPage() {
                     {/* Cross-System Deep Links */}
                     <div className="mt-3 pt-2 border-t border-slate-800 flex items-center justify-between text-[11px]">
                       <Link
-                        href={`/visual-search?query=track_${track.track_id}`}
+                        href={`/search?query=track_${track.track_id}`}
                         className="text-slate-400 hover:text-sky-400"
                         onClick={(e) => e.stopPropagation()}
                       >
