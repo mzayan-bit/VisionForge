@@ -588,8 +588,51 @@ export default function VideoLabPage() {
         }
       />
 
+      {/* Empty State Banner when no videos are analyzed */}
+      {runs.length === 0 && !isUploading && (
+        <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-10 text-center space-y-6 max-w-3xl mx-auto shadow-2xl backdrop-blur-md">
+          <div className="w-14 h-14 rounded-2xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center mx-auto text-blue-400">
+            <Video className="w-7 h-7" />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-xl font-bold text-white font-geist">No Video Loaded</h2>
+            <p className="text-xs text-slate-400 max-w-lg mx-auto leading-relaxed">
+              Upload a real-world video file (<code className="text-sky-300">.mp4</code>, <code className="text-sky-300">.mov</code>, <code className="text-sky-300">.avi</code>, <code className="text-sky-300">.mkv</code>) to extract frames, run YOLO object detection, track persistent trajectories with ByteTrack, and detect temporal events.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-left pt-1">
+            <div className="p-3 bg-slate-950/60 border border-slate-800/80 rounded-lg">
+              <span className="text-[10px] font-mono text-sky-400 font-bold uppercase tracking-wider block mb-1">01. Ingestion</span>
+              <p className="text-xs text-slate-300">Real metadata & frame sampling</p>
+            </div>
+            <div className="p-3 bg-slate-950/60 border border-slate-800/80 rounded-lg">
+              <span className="text-[10px] font-mono text-indigo-400 font-bold uppercase tracking-wider block mb-1">02. Detection</span>
+              <p className="text-xs text-slate-300">Canonical YOLO11 inference</p>
+            </div>
+            <div className="p-3 bg-slate-950/60 border border-slate-800/80 rounded-lg">
+              <span className="text-[10px] font-mono text-purple-400 font-bold uppercase tracking-wider block mb-1">03. ByteTrack</span>
+              <p className="text-xs text-slate-300">Persistent track trajectories</p>
+            </div>
+            <div className="p-3 bg-slate-950/60 border border-slate-800/80 rounded-lg">
+              <span className="text-[10px] font-mono text-emerald-400 font-bold uppercase tracking-wider block mb-1">04. Events</span>
+              <p className="text-xs text-slate-300">Spatial ROI zones & dwell times</p>
+            </div>
+          </div>
+
+          <Button
+            size="lg"
+            className="bg-blue-600 hover:bg-blue-500 text-white font-semibold shadow-lg shadow-blue-500/20"
+            onClick={() => setIsUploadModalOpen(true)}
+          >
+            <Upload className="w-4 h-4 mr-2" />
+            Upload Video Asset
+          </Button>
+        </div>
+      )}
+
       {/* Main Workspace Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div className={`grid grid-cols-1 lg:grid-cols-12 gap-6 ${runs.length === 0 ? "opacity-60 pointer-events-none" : ""}`}>
         {/* Left / Center: Interactive Video Canvas & Controls (7 Cols) */}
         <div className="lg:col-span-7 space-y-4">
           {/* Video Player Canvas Card */}
@@ -613,15 +656,10 @@ export default function VideoLabPage() {
                 >
                   {runs.map((r) => {
                     const videoMeta = videos.find((v) => v.video_id === r.video_id);
-                    const filename =
-                      videoMeta?.filename ||
-                      (r.video_id === "sample_traffic_01"
-                        ? "warehouse_security_stream_01.mp4"
-                        : `${r.video_id}.mp4`);
-                    const isCustom = r.video_id.startsWith("vid_");
+                    const filename = videoMeta?.filename || `${r.video_id}.mp4`;
                     return (
                       <option key={r.run_id} value={r.run_id}>
-                        {filename} {isCustom ? "(Custom Upload)" : "(Demo Stream)"} — {r.total_tracks} tracks ({r.duration_sec}s)
+                        {filename} — {r.total_tracks} tracks ({r.duration_sec}s)
                       </option>
                     );
                   })}

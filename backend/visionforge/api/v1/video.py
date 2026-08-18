@@ -297,12 +297,32 @@ def export_run_csv(run_id: str) -> dict[str, Any]:
     service = get_video_intelligence_service()
     run = service.get_run(run_id)
     lines = [
-        "run_id,video_id,track_id,class_name,frame_index,timestamp_sec,x_center_px,y_center_px,width_px,height_px"
+        "run_id,video_id,track_id,class_name,confidence,frame_index,timestamp_sec,x_center_px,y_center_px,width_px,height_px,x1,y1,x2,y2"
     ]
     for t in run.tracks:
         for pt in t.trajectory:
+            x1 = (
+                pt.bbox[0]
+                if pt.bbox and len(pt.bbox) >= 4
+                else round(pt.x_center_px - pt.width_px / 2.0, 1)
+            )
+            y1 = (
+                pt.bbox[1]
+                if pt.bbox and len(pt.bbox) >= 4
+                else round(pt.y_center_px - pt.height_px / 2.0, 1)
+            )
+            x2 = (
+                pt.bbox[2]
+                if pt.bbox and len(pt.bbox) >= 4
+                else round(pt.x_center_px + pt.width_px / 2.0, 1)
+            )
+            y2 = (
+                pt.bbox[3]
+                if pt.bbox and len(pt.bbox) >= 4
+                else round(pt.y_center_px + pt.height_px / 2.0, 1)
+            )
             lines.append(
-                f"{run.run_id},{run.video_id},{t.track_id},{t.class_name},{pt.frame_index},{pt.timestamp_sec},{pt.x_center_px},{pt.y_center_px},{pt.width_px},{pt.height_px}"
+                f"{run.run_id},{run.video_id},{t.track_id},{t.class_name},{t.avg_confidence},{pt.frame_index},{pt.timestamp_sec},{pt.x_center_px},{pt.y_center_px},{pt.width_px},{pt.height_px},{x1},{y1},{x2},{y2}"
             )
     csv_text = "\n".join(lines)
     return {"data": csv_text, "filename": f"{run_id}_trajectories.csv"}

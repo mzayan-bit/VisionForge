@@ -1,5 +1,6 @@
 """VisionForge Video Intelligence Service & Tracking Pipeline."""
 
+import hashlib
 import json
 import logging
 import math
@@ -75,12 +76,11 @@ class VideoIntelligenceService:
         self._videos: dict[str, VideoMetadata] = {}
         self._sessions: dict[str, VideoSession] = {}
         self.load_from_disk()
-        self._seed_default_video_and_run_if_empty()
 
     # ─── Video Metadata & Validation ─────────────────────────────────
 
     def register_video(self, file_path: str, custom_id: str | None = None) -> VideoMetadata:
-        """Validate and extract metadata from a video file asset."""
+        """Validate and extract metadata from a real video file asset."""
         p = Path(file_path).resolve()
         if not p.is_file():
             raise VideoValidationError(f"Video file path '{file_path}' does not exist.")
@@ -89,35 +89,58 @@ class VideoIntelligenceService:
         if size_bytes == 0:
             raise VideoValidationError("Video file is empty (0 bytes).")
 
+        # Compute deterministic SHA-256 fingerprint
+        hasher = hashlib.sha256()
+        with open(p, "rb") as f:
+            for chunk in iter(lambda: f.read(65536), b""):
+                hasher.update(chunk)
+        fingerprint = hasher.hexdigest()
+
+        # Check for existing video with matching fingerprint (deduplication)
+        for existing in self._videos.values():
+            if existing.video_fingerprint == fingerprint:
+                logger.info(
+                    "Video with fingerprint '%s' already registered as '%s'",
+                    fingerprint,
+                    existing.video_id,
+                )
+                return existing
+
         vid_id = custom_id or f"vid_{uuid.uuid4().hex[:10]}"
 
-        # Extract metadata via OpenCV or synthetic fallback
         fps = 30.0
         width = 1920
         height = 1080
-        frame_count = 300
-        duration_sec = 10.0
+        frame_count = 0
+        duration_sec = 0.0
         codec = "h264"
 
         try:
             import cv2
 
             cap = cv2.VideoCapture(str(p))
-            if cap.isOpened():
-                fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
-                width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 1920)
-                height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 1080)
-                frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 300)
-                if fps > 0 and frame_count > 0:
-                    duration_sec = round(frame_count / fps, 2)
-                fourcc = int(cap.get(cv2.CAP_PROP_FOURCC) or 0)
-                if fourcc:
-                    codec = (
-                        "".join([chr((fourcc >> 8 * i) & 0xFF) for i in range(4)]).strip() or "h264"
-                    )
-                cap.release()
-        except Exception as e:
-            logger.warning("Could not read video with OpenCV, using defaults: %s", e)
+            if not cap.isOpened():
+                raise VideoValidationError(
+                    f"Failed to open video file '{p.name}'. Invalid or unsupported video stream."
+                )
+
+            fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 1920)
+            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 1080)
+            frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+
+            if fps > 0 and frame_count > 0:
+                duration_sec = round(frame_count / fps, 2)
+
+            fourcc = int(cap.get(cv2.CAP_PROP_FOURCC) or 0)
+            if fourcc:
+                codec = "".join([chr((fourcc >> 8 * i) & 0xFF) for i in range(4)]).strip() or "h264"
+
+            cap.release()
+        except Exception as exc:
+            if isinstance(exc, VideoValidationError):
+                raise
+            raise VideoValidationError(f"Could not read video metadata with OpenCV: {exc}") from exc
 
         meta = VideoMetadata(
             video_id=vid_id,
@@ -129,17 +152,18 @@ class VideoIntelligenceService:
             height=height,
             codec=codec,
             size_bytes=size_bytes,
-            video_fingerprint=f"sha256_{uuid.uuid4().hex[:12]}",
+            video_fingerprint=fingerprint,
         )
         self._videos[vid_id] = meta
         self.save_to_disk()
         logger.info(
-            "Registered video '%s' (%s, %dx%d, %d frames)",
+            "Registered video '%s' (%s, %dx%d, %d frames, %.2fs)",
             vid_id,
             p.name,
             width,
             height,
             frame_count,
+            duration_sec,
         )
         return meta
 
@@ -185,7 +209,7 @@ class VideoIntelligenceService:
             lineage={
                 "model_checkpoint": "yolo11s.pt",
                 "tracker": "ByteTrack",
-                "dataset_split": "test",
+                "dataset_split": "inference",
                 "framework": "PyTorch / VisionForge",
             },
         )
@@ -232,22 +256,7 @@ class VideoIntelligenceService:
         track_buffer: int = 30,
         synthetic_frames_data: list[list[dict[str, Any]]] | None = None,
     ) -> VideoInferenceRun:
-        """Execute multi-object tracking over sampled video frames."""
-        if video_id not in self._videos:
-            self._videos[video_id] = VideoMetadata(
-                video_id=video_id,
-                filename=f"{video_id}.mp4",
-                duration_sec=10.0,
-                fps=30.0,
-                frame_count=300,
-                width=1920,
-                height=1080,
-                codec="h264",
-                size_bytes=10000000,
-                video_fingerprint=f"sha256_{uuid.uuid4().hex[:10]}",
-            )
-            self.save_to_disk()
-
+        """Execute real multi-object detection and ByteTrack tracking over video frames."""
         meta = self.get_video_metadata(video_id)
         cfg = sampling_config or FrameSamplingConfig()
 
@@ -258,35 +267,50 @@ class VideoIntelligenceService:
             track_thresh=track_thresh,
             match_thresh=match_thresh,
             track_buffer=track_buffer,
-            frame_rate=int(meta.fps),
+            frame_rate=int(meta.fps) if meta.fps > 0 else 30,
         )
 
-        total_frames = meta.frame_count
-        step = cfg.sample_interval
+        total_frames = max(1, meta.frame_count)
+        step = max(1, cfg.sample_interval)
         sampled_indices = list(range(0, total_frames, step))
         cfg.total_sampled_frames = len(sampled_indices)
 
-        frames_feed = synthetic_frames_data or self._generate_synthetic_video_feed(
-            sampled_indices, meta.fps, meta.width, meta.height
-        )
+        # Locate physical video file on disk
+        video_path = self._storage_dir / "uploads" / meta.filename
+        if not video_path.is_file():
+            video_path = self._storage_dir / meta.filename
+
+        frames_feed: list[list[dict[str, Any]]]
+        t_inf_total = 0.0
+
+        if synthetic_frames_data is not None:
+            # Deterministic unit test injection
+            frames_feed = synthetic_frames_data
+        elif video_path.is_file():
+            # Real OpenCV frame extraction and YOLO model inference
+            frames_feed, t_inf_total = self._extract_and_detect_frames(
+                video_file_path=video_path,
+                sampled_indices=sampled_indices,
+                model_id=model_id,
+                conf_thresh=track_thresh,
+            )
+        else:
+            # No video file available on disk
+            frames_feed = [[] for _ in sampled_indices]
 
         all_tracks_map: dict[int, Track] = {}
         total_detections = 0
         detections_per_second: dict[int, int] = {}
         active_objects_per_second: dict[int, set[int]] = {}
-
-        t_inf_total = 0.0
         t_track_total = 0.0
 
+        effective_fps = meta.fps if meta.fps > 0 else 30.0
+
         for frame_idx, detections in zip(sampled_indices, frames_feed, strict=False):
-            t_sec = round(frame_idx / meta.fps, 2)
+            t_sec = round(frame_idx / effective_fps, 2)
             sec_bin = int(t_sec)
             total_detections += len(detections)
             detections_per_second[sec_bin] = detections_per_second.get(sec_bin, 0) + len(detections)
-
-            # Simulated inference latency
-            t_inf_start = time.perf_counter()
-            t_inf_total += time.perf_counter() - t_inf_start
 
             # Tracker update step
             t_tr_start = time.perf_counter()
@@ -311,12 +335,14 @@ class VideoIntelligenceService:
                         trk.tlwh[1] + trk.tlwh[3],
                     ]
                     conf = getattr(trk, "score", 0.8)
-                    cls_name = trk.class_name
+                    cls_name = getattr(trk, "class_name", "object")
 
                 active_objects_per_second[sec_bin].add(tid)
 
-                norm_x = ((bbox[0] + bbox[2]) / 2.0) / float(meta.width)
-                norm_y = ((bbox[1] + bbox[3]) / 2.0) / float(meta.height)
+                norm_x = ((bbox[0] + bbox[2]) / 2.0) / float(meta.width if meta.width > 0 else 1920)
+                norm_y = ((bbox[1] + bbox[3]) / 2.0) / float(
+                    meta.height if meta.height > 0 else 1080
+                )
 
                 pt = TrajectoryPoint(
                     frame_index=frame_idx,
@@ -344,9 +370,9 @@ class VideoIntelligenceService:
                         first_timestamp_sec=t_sec,
                         last_timestamp_sec=t_sec,
                         visibility_duration_sec=0.0,
-                        avg_confidence=conf,
-                        min_confidence=conf,
-                        max_confidence=conf,
+                        avg_confidence=round(conf, 4),
+                        min_confidence=round(conf, 4),
+                        max_confidence=round(conf, 4),
                         total_distance_px=0.0,
                         avg_speed_px_per_sec=0.0,
                         image_space_velocity_px_s=0.0,
@@ -364,10 +390,10 @@ class VideoIntelligenceService:
                     )
                     t_record.detections_count += 1
                     t_record.observation_count += 1
-                    t_record.min_confidence = min(t_record.min_confidence, conf)
-                    t_record.max_confidence = max(t_record.max_confidence, conf)
+                    t_record.min_confidence = min(t_record.min_confidence, round(conf, 4))
+                    t_record.max_confidence = max(t_record.max_confidence, round(conf, 4))
 
-                    # Compute distance delta
+                    # Compute real distance delta
                     last_pt = t_record.trajectory[-1]
                     dist = math.hypot(
                         pt.x_center_px - last_pt.x_center_px, pt.y_center_px - last_pt.y_center_px
@@ -448,9 +474,104 @@ class VideoIntelligenceService:
         self._runs[run_id] = run
         self.save_to_disk()
         logger.info(
-            "Completed tracking run '%s' for video '%s' (%d tracks)", run_id, video_id, tot_tracks
+            "Completed tracking run '%s' for video '%s' (%d tracks, %d detections)",
+            run_id,
+            video_id,
+            tot_tracks,
+            total_detections,
         )
+
+        # Automatically extract and store real temporal events
+        try:
+            from visionforge.events.service import get_temporal_event_service
+
+            event_svc = get_temporal_event_service()
+            event_svc.generate_events_for_run(run_id)
+        except Exception as exc:
+            logger.warning("Could not auto-generate events for run '%s': %s", run_id, exc)
+
         return run
+
+    def _extract_and_detect_frames(
+        self,
+        video_file_path: Path,
+        sampled_indices: list[int],
+        model_id: str,
+        conf_thresh: float,
+    ) -> tuple[list[list[dict[str, Any]]], float]:
+        """Extract real video frames via OpenCV and execute real object detection."""
+        import cv2
+
+        cap = cv2.VideoCapture(str(video_file_path))
+        if not cap.isOpened():
+            logger.warning("Could not open video file '%s'", video_file_path)
+            return [[] for _ in sampled_indices], 0.0
+
+        sampled_set = set(sampled_indices)
+        max_idx = max(sampled_indices) if sampled_indices else 0
+        current_idx = 0
+        frames_dict: dict[int, list[dict[str, Any]]] = {}
+
+        # Load canonical model from InferenceService lifecycle
+        model = None
+        try:
+            descriptor = self._inference_service.get_model_descriptor(model_id)
+            model = self._inference_service._lifecycle.load_model(
+                descriptor.model_id, descriptor.checkpoint_path
+            )
+        except Exception as exc:
+            logger.warning("Model '%s' not loaded into memory: %s", model_id, exc)
+
+        t_inf_total = 0.0
+
+        while cap.isOpened() and current_idx <= max_idx:
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            if current_idx in sampled_set:
+                frame_dets: list[dict[str, Any]] = []
+                if model is not None:
+                    try:
+                        t_inf_start = time.perf_counter()
+                        # Run real YOLO detection on BGR frame
+                        results = model.predict(
+                            source=frame,
+                            conf=conf_thresh,
+                            verbose=False,
+                        )
+                        t_inf_total += time.perf_counter() - t_inf_start
+
+                        for r in results:
+                            boxes = r.boxes
+                            for box in boxes:
+                                cls_id = int(box.cls[0].item())
+                                cls_name = r.names.get(cls_id, f"class_{cls_id}")
+                                conf = float(box.conf[0].item())
+                                xyxy = box.xyxy[0].tolist()  # [x_min, y_min, x_max, y_max]
+                                frame_dets.append(
+                                    {
+                                        "bbox": [
+                                            round(xyxy[0], 1),
+                                            round(xyxy[1], 1),
+                                            round(xyxy[2], 1),
+                                            round(xyxy[3], 1),
+                                        ],
+                                        "confidence": round(conf, 4),
+                                        "class_name": cls_name,
+                                    }
+                                )
+                    except Exception as exc:
+                        logger.warning("Detection failed on frame %d: %s", current_idx, exc)
+
+                frames_dict[current_idx] = frame_dets
+
+            current_idx += 1
+
+        cap.release()
+
+        feed = [frames_dict.get(idx, []) for idx in sampled_indices]
+        return feed, t_inf_total
 
     def get_run(self, run_id: str) -> VideoInferenceRun:
         """Retrieve tracking run record."""
@@ -478,25 +599,25 @@ class VideoIntelligenceService:
         ra = runs_a[0]
         rb = runs_b[0]
 
-        t_delta = rb.total_tracks - ra.total_tracks
-        det_delta = rb.total_detections - ra.total_detections
+        t_delta = ra.total_tracks - rb.total_tracks
+        det_delta = ra.total_detections - rb.total_detections
         dur_delta = round(
-            rb.analytics.avg_track_duration_sec - ra.analytics.avg_track_duration_sec, 2
+            ra.analytics.avg_track_duration_sec - rb.analytics.avg_track_duration_sec, 2
         )
 
         cls_delta: dict[str, int] = {}
-        all_cls = set(ra.analytics.tracks_by_class.keys()).union(
-            set(rb.analytics.tracks_by_class.keys())
+        all_classes = set(ra.analytics.tracks_by_class.keys()).union(
+            rb.analytics.tracks_by_class.keys()
         )
-        for c in all_cls:
-            cls_delta[c] = rb.analytics.tracks_by_class.get(
+        for c in all_classes:
+            cls_delta[c] = ra.analytics.tracks_by_class.get(
                 c, 0
-            ) - ra.analytics.tracks_by_class.get(c, 0)
+            ) - rb.analytics.tracks_by_class.get(c, 0)
 
         findings = [
-            f"Track count delta: {t_delta:+d} tracks in Video B relative to Video A.",
-            f"Average track duration changed by {dur_delta:+.2f}s.",
-            f"Total detection volume delta: {det_delta:+d} observations.",
+            f"Run A observed {abs(t_delta)} {'more' if t_delta >= 0 else 'fewer'} unique tracks than Run B.",
+            f"Average track duration delta: {dur_delta}s between compared assets.",
+            f"Total raw detection volume delta: {det_delta} individual bounding box observations.",
         ]
 
         cmp_id = f"vcmp_{uuid.uuid4().hex[:8]}"
@@ -511,7 +632,7 @@ class VideoIntelligenceService:
             summary_findings=findings,
         )
 
-    # ─── Persistence & Seed Data ───────────────────────────────────────
+    # ─── Persistence ───────────────────────────────────────────────────
 
     def save_to_disk(self) -> None:
         self._videos_file.write_text(
@@ -554,90 +675,6 @@ class VideoIntelligenceService:
                     self._sessions[s.session_id] = s
             except Exception as e:
                 logger.error("Failed to load video sessions: %s", e)
-
-    def _generate_synthetic_video_feed(
-        self, frame_indices: list[int], fps: float, width: int, height: int
-    ) -> list[list[dict[str, Any]]]:
-        """Generate realistic synthetic detections for video tracking demonstration."""
-        feed: list[list[dict[str, Any]]] = []
-        for f_idx in frame_indices:
-            t = f_idx / fps
-            frame_dets = []
-
-            # Object 1: Person walking across
-            if 0.5 <= t <= 8.5:
-                progress = (t - 0.5) / 8.0
-                cx = 200.0 + progress * 1200.0
-                cy = 450.0 + math.sin(progress * math.pi) * 40.0
-                frame_dets.append(
-                    {
-                        "bbox": [cx - 40.0, cy - 120.0, cx + 40.0, cy + 120.0],
-                        "confidence": 0.88,
-                        "class_name": "person",
-                    }
-                )
-
-            # Object 2: Vehicle entering and parking
-            if 2.0 <= t <= 9.5:
-                progress = min(1.0, (t - 2.0) / 4.0)
-                cx = 1600.0 - progress * 800.0
-                cy = 600.0 + progress * 100.0
-                frame_dets.append(
-                    {
-                        "bbox": [cx - 120.0, cy - 80.0, cx + 120.0, cy + 80.0],
-                        "confidence": 0.94,
-                        "class_name": "vehicle",
-                    }
-                )
-
-            # Object 3: Helmet on worker
-            if 1.0 <= t <= 7.0:
-                progress = (t - 1.0) / 6.0
-                cx = 200.0 + progress * 1200.0
-                cy = 340.0 + math.sin(progress * math.pi) * 40.0
-                frame_dets.append(
-                    {
-                        "bbox": [cx - 20.0, cy - 20.0, cx + 20.0, cy + 20.0],
-                        "confidence": 0.79,
-                        "class_name": "helmet",
-                    }
-                )
-
-            feed.append(frame_dets)
-        return feed
-
-    def _seed_default_video_and_run_if_empty(self) -> None:
-        if len(self._videos) > 0:
-            return
-
-        logger.info("Seeding default warehouse security video and tracking run...")
-        vid_id = "vid_warehouse_01"
-        meta = VideoMetadata(
-            video_id=vid_id,
-            filename="warehouse_security_stream_01.mp4",
-            duration_sec=10.0,
-            fps=30.0,
-            frame_count=300,
-            width=1920,
-            height=1080,
-            codec="h264",
-            size_bytes=14285000,
-            video_fingerprint="sha256_warehouse_01_fingerprint",
-        )
-        self._videos[vid_id] = meta
-
-        # Create session
-        self.create_video_session(vid_id)
-
-        # Run tracking
-        self.run_video_tracking(
-            video_id=vid_id,
-            model_id="yolo11s.pt",
-            tracker_name="ByteTrack",
-            sampling_config=FrameSamplingConfig(
-                mode=FrameSamplingMode.EVERY_2ND_FRAME, sample_interval=2
-            ),
-        )
 
 
 @lru_cache

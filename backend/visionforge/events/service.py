@@ -63,7 +63,6 @@ class TemporalEventService:
         self._regions: dict[str, RegionOfInterest] = {}
         self._events: dict[str, TemporalEvent] = {}
         self.load_from_disk()
-        self._seed_default_regions_if_empty()
 
     # ─── Region ROI Management ─────────────────────────────────────────
 
@@ -329,26 +328,6 @@ class TemporalEventService:
                     self._events[evt.event_id] = evt
             except Exception as exc:
                 logger.warning("Failed to restore events from disk: %s", str(exc))
-
-    def _seed_default_regions_if_empty(self) -> None:
-        if len(self._regions) > 0:
-            return
-
-        logger.info("Seeding default Region ROIs for video analysis...")
-        self.create_region(
-            video_id="vid_warehouse_01",
-            name="Zone A (Loading Dock)",
-            coordinates=[[100.0, 300.0], [900.0, 800.0]],
-            shape_type=RegionShape.RECTANGLE,
-            color="#3b82f6",
-        )
-        self.create_region(
-            video_id="vid_warehouse_01",
-            name="Zone B (Staging Area)",
-            coordinates=[[1000.0, 400.0], [1800.0, 950.0]],
-            shape_type=RegionShape.RECTANGLE,
-            color="#10b981",
-        )
 
 
 @lru_cache
