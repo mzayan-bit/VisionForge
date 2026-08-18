@@ -232,8 +232,10 @@ class TrainingService:
             framework="PyTorch/Ultralytics",
             description=desc,
             device_support=["cpu", "mps", "cuda"],
-            install_path=run.best_checkpoint_path,
         )
+
+        if self._model_manager.is_installed(model_name):
+            self._model_manager.remove_model(model_name)
 
         meta = self._model_manager.prepare_install(meta)
         target_dir = Path(meta.install_path)

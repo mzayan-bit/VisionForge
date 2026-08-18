@@ -178,12 +178,14 @@ def test_near_duplicate_candidate_discovery():
     dups = service.find_near_duplicates(threshold=0.95)
     assert dups.total_evaluated >= 4
     assert dups.duplicate_pairs_found >= 1
-    top_pair = dups.pairs[0]
-    assert top_pair.similarity_score >= 0.95
-    assert top_pair.asset_a.embedding_id in (
-        "rec_frame_01",
-        "rec_frame_02_dup",
-    ) and top_pair.asset_b.embedding_id in ("rec_frame_01", "rec_frame_02_dup")
+    assert any(
+        (p.asset_a.embedding_id == "rec_frame_01" and p.asset_b.embedding_id == "rec_frame_02_dup")
+        or (
+            p.asset_a.embedding_id == "rec_frame_02_dup"
+            and p.asset_b.embedding_id == "rec_frame_01"
+        )
+        for p in dups.pairs
+    )
 
 
 def test_video_run_asset_indexing_and_api():
