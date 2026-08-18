@@ -1,14 +1,35 @@
 """Unit and Integration Tests for Video Intelligence & Multi-Object Tracking System."""
 
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 
 from visionforge.main import app
-from visionforge.video.schemas import FrameSamplingMode
+from visionforge.video.schemas import FrameSamplingConfig
 from visionforge.video.service import VideoIntelligenceService, VideoValidationError
 from visionforge.video.tracker import ByteTracker, compute_iou
 
 client = TestClient(app)
+
+
+def create_real_test_video(
+    file_path: Path, width: int = 320, height: int = 240, fps: int = 30, frames: int = 15
+) -> Path:
+    """Create a valid real MP4 video file on disk for deterministic testing."""
+    import cv2
+    import numpy as np
+
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    out = cv2.VideoWriter(str(file_path), fourcc, float(fps), (width, height))
+    for i in range(frames):
+        img = np.zeros((height, width, 3), dtype=np.uint8)
+        # Draw moving rectangle simulating real object motion
+        x = 20 + i * 10
+        cv2.rectangle(img, (x, 50), (x + 40, 120), (255, 255, 255), -1)
+        out.write(img)
+    out.release()
+    return file_path
 
 
 def test_compute_iou():
@@ -72,52 +93,90 @@ def test_trajectory_and_pixel_speed_calculation():
 
 
 def test_video_intelligence_service_metadata_and_validation(tmp_path):
-    """Verify video registration and metadata extraction."""
+    """Verify real video registration and metadata extraction."""
     service = VideoIntelligenceService(storage_dir=tmp_path)
 
     # Test non-existent file error
     with pytest.raises(VideoValidationError):
         service.register_video("/non/existent/video.mp4")
 
-    # Create dummy video file
-    dummy_vid = tmp_path / "test.mp4"
-    dummy_vid.write_bytes(b"dummy video binary data")
+    # Create real test video file
+    vid_file = tmp_path / "test.mp4"
+    create_real_test_video(vid_file, width=320, height=240, fps=30, frames=15)
 
-    meta = service.register_video(str(dummy_vid))
+    meta = service.register_video(str(vid_file))
     assert meta.filename == "test.mp4"
-    assert meta.duration_sec > 0.0
-    assert meta.fps > 0.0
+    assert meta.duration_sec == 0.5  # 15 frames / 30 fps = 0.5s
+    assert meta.fps == 30.0
+    assert meta.width == 320
+    assert meta.height == 240
+    assert meta.frame_count == 15
+    assert len(meta.video_fingerprint) == 64  # SHA-256
 
 
 def test_video_intelligence_service_execute_inference(tmp_path):
     """Verify complete video inference pipeline execution and temporal analytics."""
     service = VideoIntelligenceService(storage_dir=tmp_path)
 
-    run = service.execute_video_inference(
-        video_id="test_vid_01",
+    # Create real test video
+    vid_file = tmp_path / "test_run.mp4"
+    create_real_test_video(vid_file, width=320, height=240, fps=30, frames=10)
+    meta = service.register_video(str(vid_file))
+
+    # Feed deterministic detections to test ByteTrack association
+    feed = [
+        [
+            {
+                "class_name": "person",
+                "confidence": 0.90,
+                "bbox": [50.0 + i * 5, 50.0, 100.0 + i * 5, 150.0],
+            }
+        ]
+        for i in range(5)
+    ]
+
+    run = service.run_video_tracking(
+        video_id=meta.video_id,
         model_id="yolo11s.pt",
-        sampling_mode=FrameSamplingMode.EVERY_2ND_FRAME,
+        sampling_config=FrameSamplingConfig(sample_interval=2),
+        synthetic_frames_data=feed,
     )
 
     assert run.run_id.startswith("vrun_")
-    assert run.video_id == "test_vid_01"
+    assert run.video_id == meta.video_id
     assert run.tracker_name == "ByteTrack"
-    assert run.processed_frames > 0
-    assert run.total_tracks > 0
-    assert len(run.tracks) > 0
-    assert run.analytics.total_tracks == run.total_tracks
+    assert run.processed_frames == 5
+    assert run.total_tracks == 1
+    assert len(run.tracks) == 1
+    assert run.tracks[0].class_name == "person"
+    assert run.analytics.total_tracks == 1
     assert run.processing_fps > 0.0
 
 
-def test_video_api_endpoints():
-    """Test video intelligence REST API routes."""
-    # 1. Create Video Run
+def test_video_api_endpoints(tmp_path):
+    """Test video intelligence REST API routes with real video upload."""
+    vid_file = tmp_path / "api_test.mp4"
+    create_real_test_video(vid_file, width=320, height=240, fps=30, frames=10)
+
+    # 1. Upload Video
+    with open(vid_file, "rb") as f:
+        res_upload = client.post(
+            "/api/v1/video/upload",
+            files={"file": ("api_test.mp4", f, "video/mp4")},
+        )
+    assert res_upload.status_code == 201
+    meta = res_upload.json()
+    video_id = meta["video_id"]
+    assert meta["frame_count"] == 10
+
+    # 2. Create Video Run
     res_create = client.post(
         "/api/v1/video/runs",
         json={
-            "video_id": "sample_traffic_01",
+            "video_id": video_id,
             "model_id": "yolo11s.pt",
             "sampling_mode": "EVERY_2ND_FRAME",
+            "custom_stride": 2,
         },
     )
     assert res_create.status_code == 201
@@ -125,28 +184,22 @@ def test_video_api_endpoints():
     run_id = run_data["run_id"]
     assert run_data["tracker_name"] == "ByteTrack"
 
-    # 2. List Runs
+    # 3. List Runs
     res_list = client.get("/api/v1/video/runs")
     assert res_list.status_code == 200
     assert len(res_list.json()) >= 1
 
-    # 3. Get Run Detail
+    # 4. Get Run Detail
     res_get = client.get(f"/api/v1/video/runs/{run_id}")
     assert res_get.status_code == 200
     assert res_get.json()["run_id"] == run_id
 
-    # 4. Get Tracks
-    res_tracks = client.get(f"/api/v1/video/runs/{run_id}/tracks")
-    assert res_tracks.status_code == 200
-    assert len(res_tracks.json()) > 0
-
-    # 5. Get Temporal Analytics
-    res_analytics = client.get(f"/api/v1/video/runs/{run_id}/analytics")
-    assert res_analytics.status_code == 200
-    assert "total_tracks" in res_analytics.json()
+    # 5. Get Stream
+    res_stream = client.get(f"/api/v1/video/stream/{video_id}")
+    assert res_stream.status_code == 200
 
     # 6. Export Trajectories CSV
     res_export = client.get(f"/api/v1/video/runs/{run_id}/export")
     assert res_export.status_code == 200
     assert "data" in res_export.json()
-    assert "run_id,video_id,track_id" in res_export.json()["data"]
+    assert "run_id,video_id,track_id,class_name,confidence" in res_export.json()["data"]

@@ -175,11 +175,24 @@ def test_temporal_event_detector_rule_logic():
 
 def test_temporal_event_service_and_api_endpoints(tmp_path):
     """Test TemporalEventService and REST API endpoints."""
+    from tests.test_video_intelligence import create_real_test_video
+
+    vid_file = tmp_path / "events_test.mp4"
+    create_real_test_video(vid_file, width=320, height=240, fps=30, frames=10)
+    with open(vid_file, "rb") as f:
+        res_upload = client.post(
+            "/api/v1/video/upload",
+            files={"file": ("events_test.mp4", f, "video/mp4")},
+        )
+    assert res_upload.status_code == 201
+    meta = res_upload.json()
+    video_id = meta["video_id"]
+
     # 1. API: Create Region 1
     res_reg1 = client.post(
         "/api/v1/events/regions",
         json={
-            "video_id": "sample_traffic_01",
+            "video_id": video_id,
             "name": "Zone B",
             "coordinates": [[200.0, 200.0], [800.0, 800.0]],
         },
@@ -190,7 +203,7 @@ def test_temporal_event_service_and_api_endpoints(tmp_path):
     res_reg2 = client.post(
         "/api/v1/events/regions",
         json={
-            "video_id": "sample_traffic_01",
+            "video_id": video_id,
             "name": "Restricted Corridor",
             "coordinates": [[100.0, 100.0], [600.0, 600.0]],
         },
@@ -199,21 +212,18 @@ def test_temporal_event_service_and_api_endpoints(tmp_path):
     assert res_reg2.json()["name"] == "Restricted Corridor"
 
     # 3. API: List Regions
-    res_list_reg = client.get("/api/v1/events/regions?video_id=sample_traffic_01")
+    res_list_reg = client.get(f"/api/v1/events/regions?video_id={video_id}")
     assert res_list_reg.status_code == 200
     assert len(res_list_reg.json()) >= 2
 
-    # 4. First run video pipeline via API to generate run
-    client.post(
-        "/api/v1/video/runs",
-        json={
-            "video_id": "sample_traffic_01",
-            "model_id": "yolo11s.pt",
-            "sampling_mode": "EVERY_2ND_FRAME",
-        },
-    )
-    res_vruns = client.get("/api/v1/video/runs")
-    run_id = res_vruns.json()[0]["run_id"]
+    # 4. First register run with tracks to test event generation
+    from visionforge.video.service import get_video_intelligence_service
+
+    video_svc = get_video_intelligence_service()
+    run = create_synthetic_run()
+    run.video_id = video_id
+    video_svc._runs[run.run_id] = run
+    run_id = run.run_id
 
     # 5. API: Generate Events
     res_gen = client.post(

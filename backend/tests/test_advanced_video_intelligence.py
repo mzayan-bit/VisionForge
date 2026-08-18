@@ -2,6 +2,7 @@
 
 from fastapi.testclient import TestClient
 
+from tests.test_video_intelligence import create_real_test_video
 from visionforge.events.detector import TemporalEventDetector
 from visionforge.events.schemas import (
     EventRuleConfig,
@@ -98,6 +99,7 @@ def build_synthetic_enter_dwell_exit_run() -> VideoInferenceRun:
         model_id="yolo11s.pt",
         tracker_name="ByteTrack",
         sampling_config=FrameSamplingConfig(mode=FrameSamplingMode.EVERY_FRAME, sample_interval=1),
+        status="COMPLETED",
         duration_sec=3.0,
         processed_frames=30,
         total_detections=30,
@@ -151,14 +153,24 @@ def test_video_comparison_functionality(tmp_path):
     """Verify comparing two video runs side-by-side."""
     service = VideoIntelligenceService(storage_dir=tmp_path)
 
-    # Run tracking for both
-    service.run_video_tracking("vid_comp_a")
-    service.run_video_tracking("vid_comp_b")
+    # Create real test videos
+    vid_a = tmp_path / "vid_a.mp4"
+    vid_b = tmp_path / "vid_b.mp4"
+    create_real_test_video(vid_a, width=320, height=240, fps=30, frames=10)
+    create_real_test_video(vid_b, width=320, height=240, fps=30, frames=15)
+    meta_a = service.register_video(str(vid_a))
+    meta_b = service.register_video(str(vid_b))
 
-    result = service.compare_videos("vid_comp_a", "vid_comp_b")
+    # Run tracking for both
+    feed_a = [[{"class_name": "person", "confidence": 0.9, "bbox": [10, 10, 50, 50]}]]
+    feed_b = [[{"class_name": "car", "confidence": 0.9, "bbox": [20, 20, 80, 80]}]]
+    service.run_video_tracking(meta_a.video_id, synthetic_frames_data=feed_a)
+    service.run_video_tracking(meta_b.video_id, synthetic_frames_data=feed_b)
+
+    result = service.compare_videos(meta_a.video_id, meta_b.video_id)
     assert result.comparison_id.startswith("vcmp_")
-    assert result.video_a_id == "vid_comp_a"
-    assert result.video_b_id == "vid_comp_b"
+    assert result.video_a_id == meta_a.video_id
+    assert result.video_b_id == meta_b.video_id
     assert len(result.summary_findings) >= 1
 
 
@@ -185,8 +197,24 @@ def test_temporal_query_interpretation():
     assert res3.status == QueryStatus.UNSUPPORTED
 
 
-def test_video_session_and_lineage_api():
+def test_video_session_and_lineage_api(tmp_path):
     """Verify video sessions and lineage REST API."""
+    vid_file = tmp_path / "sess_test.mp4"
+    create_real_test_video(vid_file, width=320, height=240, fps=30, frames=10)
+    with open(vid_file, "rb") as f:
+        res_upload = client.post(
+            "/api/v1/video/upload",
+            files={"file": ("sess_test.mp4", f, "video/mp4")},
+        )
+    assert res_upload.status_code == 201
+    meta = res_upload.json()
+
+    res_create = client.post(
+        "/api/v1/video/sessions",
+        json={"video_id": meta["video_id"], "model_version": "1.0.0"},
+    )
+    assert res_create.status_code == 201
+
     res_sess = client.get("/api/v1/video/sessions")
     assert res_sess.status_code == 200
     sessions = res_sess.json()
