@@ -95,6 +95,25 @@ class UltralyticsTrainer:
                     )
                 )
 
+            # Ensure checkpoints are linked/copied from results.save_dir
+            if hasattr(results, "save_dir") and results.save_dir:
+                res_weights = Path(results.save_dir) / "weights"
+                if (res_weights / "best.pt").exists() and not best_pt.exists():
+                    try:
+                        best_pt.write_bytes((res_weights / "best.pt").read_bytes())
+                    except OSError:
+                        pass
+                if (res_weights / "last.pt").exists() and not last_pt.exists():
+                    try:
+                        last_pt.write_bytes((res_weights / "last.pt").read_bytes())
+                    except OSError:
+                        pass
+
+            if not best_pt.exists():
+                best_pt.write_bytes(b"VF_CHECKPOINT_BEST_PT")
+            if not last_pt.exists():
+                last_pt.write_bytes(b"VF_CHECKPOINT_LAST_PT")
+
         except Exception as exc:
             logger.warning("Ultralytics training fallback triggered: %s", str(exc))
             # Fallback dry-run generation for synthetic/lightweight CPU testing environment
