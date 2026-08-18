@@ -45,6 +45,7 @@ import {
   Sparkle,
   Target,
   Share2,
+  Upload,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
@@ -229,6 +230,54 @@ export default function VideoLabPage() {
   const [isCompareModalOpen, setIsCompareModalOpen] = useState<boolean>(false);
   const [compareResult, setCompareResult] = useState<any | null>(null);
 
+  // Video Upload Modal
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState<boolean>(false);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState<boolean>(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  const handleUploadVideo = async () => {
+    if (!uploadFile) return;
+    setIsUploading(true);
+    setUploadError(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", uploadFile);
+
+      const res = await fetch("/api/v1/video/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || "Video upload failed");
+      }
+
+      const meta = await res.json();
+
+      // Automatically trigger tracking run
+      await fetch("/api/v1/video/runs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          video_id: meta.video_id,
+          model_name: "yolo11n.pt",
+          confidence_threshold: 0.25,
+        }),
+      });
+
+      await fetchSessions();
+      await fetchRuns();
+      setIsUploadModalOpen(false);
+      setUploadFile(null);
+    } catch (err: any) {
+      setUploadError(err.message || "Failed to upload and analyze video");
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   // Initial Load
   useEffect(() => {
     fetchSessions();
@@ -404,6 +453,15 @@ export default function VideoLabPage() {
         description="Continuous visual trajectory tracking, rule-based temporal event extraction, spatial ROI zones, and natural language query evidence."
         actions={
           <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              className="border-slate-700 bg-slate-900/60 hover:bg-slate-800 text-slate-200"
+              onClick={() => setIsUploadModalOpen(true)}
+            >
+              <Upload className="w-4 h-4 mr-2 text-blue-400" />
+              Upload Video
+            </Button>
+
             <Button
               variant="outline"
               className="border-slate-700 bg-slate-900/60 hover:bg-slate-800 text-slate-200"
@@ -1068,6 +1126,84 @@ export default function VideoLabPage() {
             <div className="flex justify-end pt-2 border-t border-slate-800">
               <Button size="sm" variant="ghost" onClick={() => setIsCompareModalOpen(false)}>
                 Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Upload Custom Video Modal */}
+      {isUploadModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl max-w-md w-full p-5 space-y-4 shadow-2xl">
+            <h3 className="text-base font-semibold text-slate-100 flex items-center gap-2">
+              <Upload className="w-5 h-5 text-blue-400" />
+              Upload Custom Video Asset
+            </h3>
+
+            <p className="text-xs text-slate-400">
+              Upload any MP4, MOV, AVI, or MKV video. VisionForge will automatically parse metadata and execute object detection & ByteTrack tracking.
+            </p>
+
+            <label className="relative block border-2 border-dashed border-slate-700 hover:border-blue-500/60 rounded-xl p-6 text-center transition-colors cursor-pointer bg-slate-950/50">
+              <Video className="w-8 h-8 text-slate-500 mx-auto mb-2" />
+              <p className="text-xs text-slate-300 font-medium">
+                {uploadFile ? (
+                  <span className="text-emerald-400 font-mono">{uploadFile.name}</span>
+                ) : (
+                  <>Drag & Drop or <span className="text-blue-400">Browse Video</span></>
+                )}
+              </p>
+              <p className="text-[10px] text-slate-500 mt-1">MP4, MOV, AVI, MKV up to 500MB</p>
+              <input
+                type="file"
+                accept="video/*"
+                onChange={(e) => {
+                  if (e.target.files && e.target.files[0]) {
+                    setUploadFile(e.target.files[0]);
+                  }
+                }}
+                className="hidden"
+              />
+            </label>
+
+            {uploadError && (
+              <div className="text-xs text-rose-400 bg-rose-950/30 border border-rose-800/40 p-2.5 rounded-lg flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{uploadError}</span>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={isUploading}
+                onClick={() => {
+                  setIsUploadModalOpen(false);
+                  setUploadFile(null);
+                  setUploadError(null);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                disabled={!uploadFile || isUploading}
+                className="bg-blue-600 hover:bg-blue-500 text-white flex items-center gap-2"
+                onClick={handleUploadVideo}
+              >
+                {isUploading ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    Processing Video...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-3.5 h-3.5" />
+                    Upload & Track
+                  </>
+                )}
               </Button>
             </div>
           </div>
