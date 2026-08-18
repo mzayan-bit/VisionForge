@@ -654,7 +654,11 @@ class VideoIntelligenceService:
                 data = json.loads(self._videos_file.read_text(encoding="utf-8"))
                 for it in data:
                     v = VideoMetadata(**it)
-                    self._videos[v.video_id] = v
+                    # Verify physical file existence on disk
+                    p1 = self._storage_dir / "uploads" / v.filename
+                    p2 = self._storage_dir / v.filename
+                    if p1.is_file() or p2.is_file():
+                        self._videos[v.video_id] = v
             except Exception as e:
                 logger.error("Failed to load video metadata: %s", e)
 
@@ -663,7 +667,9 @@ class VideoIntelligenceService:
                 data = json.loads(self._runs_file.read_text(encoding="utf-8"))
                 for it in data:
                     r = VideoInferenceRun(**it)
-                    self._runs[r.run_id] = r
+                    # Only retain runs that belong to valid registered videos
+                    if r.video_id in self._videos:
+                        self._runs[r.run_id] = r
             except Exception as e:
                 logger.error("Failed to load video runs: %s", e)
 
@@ -672,9 +678,13 @@ class VideoIntelligenceService:
                 data = json.loads(self._sessions_file.read_text(encoding="utf-8"))
                 for it in data:
                     s = VideoSession(**it)
-                    self._sessions[s.session_id] = s
+                    if s.video_id in self._videos:
+                        self._sessions[s.session_id] = s
             except Exception as e:
                 logger.error("Failed to load video sessions: %s", e)
+
+        # Write clean pruned state
+        self.save_to_disk()
 
 
 @lru_cache

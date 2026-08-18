@@ -311,12 +311,17 @@ class TemporalEventService:
         )
 
     def load_from_disk(self) -> None:
+        video_svc = get_video_intelligence_service()
+        valid_video_ids = set(video_svc._videos.keys())
+        valid_run_ids = set(video_svc._runs.keys())
+
         if self._regions_file.is_file():
             try:
                 raw_regs = json.loads(self._regions_file.read_text(encoding="utf-8"))
                 for item in raw_regs.get("regions", []):
                     reg = RegionOfInterest(**item)
-                    self._regions[reg.region_id] = reg
+                    if reg.video_id in valid_video_ids:
+                        self._regions[reg.region_id] = reg
             except Exception as exc:
                 logger.warning("Failed to restore regions from disk: %s", str(exc))
 
@@ -325,9 +330,12 @@ class TemporalEventService:
                 raw_evts = json.loads(self._events_file.read_text(encoding="utf-8"))
                 for item in raw_evts.get("events", []):
                     evt = TemporalEvent(**item)
-                    self._events[evt.event_id] = evt
+                    if evt.run_id in valid_run_ids or evt.video_id in valid_video_ids:
+                        self._events[evt.event_id] = evt
             except Exception as exc:
                 logger.warning("Failed to restore events from disk: %s", str(exc))
+
+        self.save_to_disk()
 
 
 @lru_cache

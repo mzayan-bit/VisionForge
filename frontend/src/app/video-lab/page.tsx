@@ -221,6 +221,8 @@ export default function VideoLabPage() {
 
   // Playback & Overlay State
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [actualVideoWidth, setActualVideoWidth] = useState<number>(1920);
+  const [actualVideoHeight, setActualVideoHeight] = useState<number>(1080);
   const [hasVideoError, setHasVideoError] = useState<boolean>(false);
   const [currentTimeSec, setCurrentTimeSec] = useState<number>(0.0);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
@@ -239,7 +241,7 @@ export default function VideoLabPage() {
 
   // Region Creation Modal
   const [isRegionModalOpen, setIsRegionModalOpen] = useState<boolean>(false);
-  const [newRegionName, setNewRegionName] = useState<string>("Corridor B");
+  const [newRegionName, setNewRegionName] = useState<string>("Zone A");
   const [newRegionColor, setNewRegionColor] = useState<string>("#3b82f6");
 
   // Video Comparison Modal
@@ -276,7 +278,10 @@ export default function VideoLabPage() {
         throw new Error("No video ID returned from server.");
       }
 
-      // Automatically trigger tracking run with correct schema
+      // Refresh videos list immediately
+      await fetchVideos();
+
+      // Automatically trigger tracking run with real YOLO model
       const runRes = await fetch("/api/v1/video/runs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -288,26 +293,36 @@ export default function VideoLabPage() {
         }),
       });
 
-      let newRun: any = null;
-      if (runRes.ok) {
-        newRun = await runRes.json();
+      if (!runRes.ok) {
+        const errData = await runRes.json().catch(() => ({}));
+        throw new Error(errData.detail || errData.message || "Video inference tracking failed");
       }
 
-      await fetchSessions();
+      const newRun = await runRes.json();
+
+      // Fetch all runs
       const runsRes = await fetch("/api/v1/video/runs");
       if (runsRes.ok) {
         const allRuns = await runsRes.json();
         setRuns(allRuns);
-        if (newRun) {
-          setSelectedRun(newRun);
-          fetchRegions(videoId);
-          fetchEvents(newRun.run_id);
-        } else if (allRuns.length > 0) {
-          setSelectedRun(allRuns[0]);
-          fetchRegions(allRuns[0].video_id);
-          fetchEvents(allRuns[0].run_id);
-        }
       }
+
+      // Explicitly set the active run to the newly uploaded and analyzed video
+      setSelectedRun(newRun);
+      setCurrentTimeSec(0.0);
+      setSelectedTrack(null);
+      setSelectedEvent(null);
+      setQueryResult(null);
+      setHasVideoError(false);
+
+      if (meta.width && meta.height) {
+        setActualVideoWidth(meta.width);
+        setActualVideoHeight(meta.height);
+      }
+
+      await fetchSessions();
+      await fetchRegions(videoId);
+      await fetchEvents(newRun.run_id);
 
       setIsUploadModalOpen(false);
       setUploadFile(null);
@@ -333,7 +348,7 @@ export default function VideoLabPage() {
         setVideos(data);
       }
     } catch (e) {
-      console.warn("Using fallback videos:", e);
+      console.warn("Failed fetching videos:", e);
     }
   };
 
@@ -346,7 +361,7 @@ export default function VideoLabPage() {
         if (data.length > 0) setSelectedSession(data[0]);
       }
     } catch (e) {
-      console.warn("Using fallback sessions:", e);
+      console.warn("Failed fetching sessions:", e);
     }
   };
 
@@ -363,7 +378,7 @@ export default function VideoLabPage() {
         }
       }
     } catch (e) {
-      console.warn("Using fallback runs:", e);
+      console.warn("Failed fetching runs:", e);
     }
   };
 
@@ -689,7 +704,13 @@ export default function VideoLabPage() {
                 muted
                 playsInline
                 onError={() => setHasVideoError(true)}
-                onLoadedMetadata={() => setHasVideoError(false)}
+                onLoadedMetadata={(e) => {
+                  setHasVideoError(false);
+                  if (e.currentTarget.videoWidth && e.currentTarget.videoHeight) {
+                    setActualVideoWidth(e.currentTarget.videoWidth);
+                    setActualVideoHeight(e.currentTarget.videoHeight);
+                  }
+                }}
                 onTimeUpdate={(e) => {
                   if (!hasVideoError) {
                     setCurrentTimeSec(parseFloat(e.currentTarget.currentTime.toFixed(2)));
@@ -709,8 +730,9 @@ export default function VideoLabPage() {
               {/* Render Active ROI Zones */}
               {showRegions &&
                 regions.map((reg) => {
-                  const vidW = selectedSession?.width || 1920;
-                  const vidH = selectedSession?.height || 1080;
+                  const currentVideoMeta = videos.find((v) => v.video_id === selectedRun?.video_id);
+                  const vidW = currentVideoMeta?.width || actualVideoWidth || selectedSession?.width || 1920;
+                  const vidH = currentVideoMeta?.height || actualVideoHeight || selectedSession?.height || 1080;
                   const leftPct = (reg.coordinates[0][0] / vidW) * 100;
                   const topPct = (reg.coordinates[0][1] / vidH) * 100;
                   const widthPct = ((reg.coordinates[1][0] - reg.coordinates[0][0]) / vidW) * 100;
@@ -740,8 +762,9 @@ export default function VideoLabPage() {
 
               {/* Render Active Tracks & Bounding Boxes */}
               {activeTracksAtCurrentTime.map((track) => {
-                const vidW = selectedSession?.width || 1920;
-                const vidH = selectedSession?.height || 1080;
+                const currentVideoMeta = videos.find((v) => v.video_id === selectedRun?.video_id);
+                const vidW = currentVideoMeta?.width || actualVideoWidth || selectedSession?.width || 1920;
+                const vidH = currentVideoMeta?.height || actualVideoHeight || selectedSession?.height || 1080;
 
                 // Find closest trajectory point for current time
                 const point = track.trajectory.reduce((prev, curr) =>
@@ -751,7 +774,7 @@ export default function VideoLabPage() {
                   track.trajectory[0]
                 );
 
-                if (!point) return null;
+                if (!point || Math.abs(point.timestamp_sec - currentTimeSec) > 0.35) return null;
 
                 const leftPct = (point.bbox[0] / vidW) * 100;
                 const topPct = (point.bbox[1] / vidH) * 100;
@@ -764,7 +787,7 @@ export default function VideoLabPage() {
                   <div
                     key={track.track_id}
                     onClick={() => setSelectedTrack(track)}
-                    className={`absolute cursor-pointer transition-all duration-150 z-20 ${
+                    className={`absolute cursor-pointer transition-all duration-75 z-20 ${
                       showBoxes ? "border-2 rounded" : ""
                     } ${
                       isSelected
@@ -792,32 +815,33 @@ export default function VideoLabPage() {
               {/* Render Motion Trails / Trajectories */}
               {showTrajectories && selectedTrack && (
                 <svg className="absolute inset-0 w-full h-full pointer-events-none z-15">
-                  <polyline
-                    fill="none"
-                    stroke="#f59e0b"
-                    strokeWidth="3"
-                    strokeDasharray="4 2"
-                    points={selectedTrack.trajectory
-                      .map((pt) => {
-                        const vidW = selectedSession?.width || 1920;
-                        const vidH = selectedSession?.height || 1080;
-                        return `${(pt.x_center_px / vidW) * 100}%,${(pt.y_center_px / vidH) * 100}%`;
-                      })
-                      .join(" ")}
-                  />
-                  {selectedTrack.trajectory.map((pt, i) => {
-                    const vidW = selectedSession?.width || 1920;
-                    const vidH = selectedSession?.height || 1080;
+                  {(() => {
+                    const currentVideoMeta = videos.find((v) => v.video_id === selectedRun?.video_id);
+                    const vidW = currentVideoMeta?.width || actualVideoWidth || selectedSession?.width || 1920;
+                    const vidH = currentVideoMeta?.height || actualVideoHeight || selectedSession?.height || 1080;
                     return (
-                      <circle
-                        key={i}
-                        cx={`${(pt.x_center_px / vidW) * 100}%`}
-                        cy={`${(pt.y_center_px / vidH) * 100}%`}
-                        r="3"
-                        fill="#fbbf24"
-                      />
+                      <>
+                        <polyline
+                          fill="none"
+                          stroke="#f59e0b"
+                          strokeWidth="3"
+                          strokeDasharray="4 2"
+                          points={selectedTrack.trajectory
+                            .map((pt) => `${(pt.x_center_px / vidW) * 100}%,${(pt.y_center_px / vidH) * 100}%`)
+                            .join(" ")}
+                        />
+                        {selectedTrack.trajectory.map((pt, i) => (
+                          <circle
+                            key={i}
+                            cx={`${(pt.x_center_px / vidW) * 100}%`}
+                            cy={`${(pt.y_center_px / vidH) * 100}%`}
+                            r="3"
+                            fill="#fbbf24"
+                          />
+                        ))}
+                      </>
                     );
-                  })}
+                  })()}
                 </svg>
               )}
 
