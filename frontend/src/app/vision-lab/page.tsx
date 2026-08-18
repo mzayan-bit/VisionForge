@@ -569,7 +569,7 @@ export default function VisionLabPage() {
                   Image Input
                 </h3>
 
-                <div className="border-2 border-dashed border-white/10 hover:border-blue-500/50 rounded-xl p-6 text-center transition-colors">
+                <label className="relative block border-2 border-dashed border-white/10 hover:border-blue-500/50 rounded-xl p-6 text-center transition-colors cursor-pointer">
                   <Upload className="w-6 h-6 text-neutral-400 mx-auto mb-2" />
                   <p className="text-xs text-neutral-300 font-medium">
                     Drag & Drop or <span className="text-blue-400">Browse Image</span>
@@ -579,9 +579,9 @@ export default function VisionLabPage() {
                     type="file"
                     accept="image/*"
                     onChange={handleFileUpload}
-                    className="absolute inset-0 opacity-0 cursor-pointer"
+                    className="hidden"
                   />
-                </div>
+                </label>
 
                 {/* Quick Sample Selector */}
                 <div>
