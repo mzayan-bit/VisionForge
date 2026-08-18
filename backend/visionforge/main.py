@@ -1,6 +1,6 @@
 """VisionForge Main Application Entrypoint."""
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 
 from visionforge.api.v1.router import router as api_v1_router
 from visionforge.core.config import get_settings
@@ -37,7 +37,7 @@ def create_app() -> FastAPI:
     # 5. Include API Version Routers
     app.include_router(api_v1_router, prefix="/api")
 
-    # 6. Root Metadata & Health Endpoints
+    # 6. Root Metadata, Probes & Metrics Endpoints
     @app.get(
         "/health",
         summary="Direct Health Check",
@@ -51,6 +51,37 @@ def create_app() -> FastAPI:
             "version": settings.version,
             "environment": settings.environment.value,
         }
+
+    @app.get(
+        "/ready",
+        summary="Direct Readiness Check",
+        description="Returns readiness state for load balancers and orchestrators.",
+    )
+    async def ready_check() -> dict:
+        """Direct readiness probe endpoint."""
+        return {
+            "ready": True,
+            "status": "ready",
+            "service": "visionforge-backend",
+            "version": settings.version,
+        }
+
+    @app.get(
+        "/metrics",
+        summary="Prometheus Metrics Exposition",
+        description="Emits real operational metrics in Prometheus text exposition format.",
+    )
+    async def prometheus_metrics() -> Response:
+        """Prometheus metrics endpoint."""
+        from fastapi.responses import PlainTextResponse
+
+        from visionforge.core.telemetry import get_metrics_collector
+
+        collector = get_metrics_collector()
+        return PlainTextResponse(
+            content=collector.export_prometheus_metrics(),
+            media_type="text/plain; version=0.0.4; charset=utf-8",
+        )
 
     @app.get(
         "/",

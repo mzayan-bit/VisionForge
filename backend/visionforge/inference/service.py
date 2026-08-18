@@ -13,6 +13,7 @@ from PIL import Image, ImageDraw
 
 from visionforge.core.config import get_settings
 from visionforge.core.exceptions import VisionForgeException
+from visionforge.core.telemetry import get_metrics_collector
 from visionforge.inference.schemas import (
     InferenceBenchmarkConfig,
     InferenceBenchmarkResult,
@@ -333,6 +334,7 @@ class InferenceService:
                 verbose=False,
             )
             dt_ms = round((time.perf_counter() - t0) * 1000.0, 2)
+            get_metrics_collector().record_inference(model_name=config.model_id, duration_ms=dt_ms)
 
             if (
                 results
@@ -369,8 +371,13 @@ class InferenceService:
                     )
         except Exception as exc:
             dt_ms = round((time.perf_counter() - t0) * 1000.0, 2)
+            get_metrics_collector().record_failure(
+                service="inference",
+                error_code="INFERENCE_EXECUTION_ERROR",
+                message=str(exc),
+                details={"model_id": config.model_id},
+            )
             logger.warning("Real PyTorch forward pass fallback for dry-run/mock: %s", str(exc))
-            # Fallback synthetic predictions for mock/unit test environments without GPU
             predictions.append(
                 StandardPrediction(
                     prediction_id=f"pred_{inf_id}_0",

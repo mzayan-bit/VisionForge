@@ -41,6 +41,30 @@ class ResourceNotFoundException(VisionForgeException):
         )
 
 
+class DatasetNotFoundException(ResourceNotFoundException):
+    """Raised when a dataset or manifest is not found."""
+
+    def __init__(self, dataset_id: str):
+        super().__init__(resource_type="Dataset", resource_id=dataset_id)
+        self.code = "DATASET_NOT_FOUND"
+
+
+class ModelNotFoundException(ResourceNotFoundException):
+    """Raised when a model or checkpoint is not found in registry."""
+
+    def __init__(self, model_id: str):
+        super().__init__(resource_type="Model", resource_id=model_id)
+        self.code = "MODEL_NOT_FOUND"
+
+
+class JobNotFoundException(ResourceNotFoundException):
+    """Raised when a requested background job is not found."""
+
+    def __init__(self, job_id: str):
+        super().__init__(resource_type="Job", resource_id=job_id)
+        self.code = "JOB_NOT_FOUND"
+
+
 class ValidationException(VisionForgeException):
     """Raised when payload or query parameters fail validation constraints."""
 
@@ -50,6 +74,58 @@ class ValidationException(VisionForgeException):
             code="VALIDATION_ERROR",
             status_code=status.HTTP_400_BAD_REQUEST,
             details=details,
+        )
+
+
+class InvalidDatasetException(ValidationException):
+    """Raised when dataset annotations, split ratios, or geometry are invalid."""
+
+    def __init__(self, message: str, details: list[dict[str, Any]] | None = None):
+        super().__init__(message=message, details=details)
+        self.code = "INVALID_DATASET"
+
+
+class InvalidConfigurationException(ValidationException):
+    """Raised when hyperparameter or service configuration is invalid."""
+
+    def __init__(self, message: str, details: list[dict[str, Any]] | None = None):
+        super().__init__(message=message, details=details)
+        self.code = "INVALID_CONFIGURATION"
+
+
+class TrainingJobFailedException(VisionForgeException):
+    """Raised when deep learning model training fails."""
+
+    def __init__(self, message: str, details: list[dict[str, Any]] | None = None):
+        super().__init__(
+            message=message,
+            code="TRAINING_JOB_FAILED",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            details=details,
+        )
+
+
+class EvaluationFailedException(VisionForgeException):
+    """Raised when benchmark evaluation fails."""
+
+    def __init__(self, message: str, details: list[dict[str, Any]] | None = None):
+        super().__init__(
+            message=message,
+            code="EVALUATION_FAILED",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            details=details,
+        )
+
+
+class DependencyUnavailableException(VisionForgeException):
+    """Raised when a required upstream service or database is unavailable."""
+
+    def __init__(self, dependency_name: str, message: str | None = None):
+        msg = message or f"Dependency '{dependency_name}' is currently unavailable"
+        super().__init__(
+            message=msg,
+            code="DEPENDENCY_UNAVAILABLE",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         )
 
 

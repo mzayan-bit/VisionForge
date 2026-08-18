@@ -17,6 +17,7 @@ from visionforge.ai.schemas_embedding import ImageEmbeddingResult
 from visionforge.ai.types import TaskType
 from visionforge.core.config import get_settings
 from visionforge.core.exceptions import VisionForgeException
+from visionforge.core.telemetry import get_metrics_collector
 from visionforge.engine.runner import VisionEngine, get_vision_engine
 from visionforge.memory.index import VisualMemoryIndex, VisualMemoryRecord, get_visual_memory_index
 from visionforge.search.engine import (
@@ -367,6 +368,7 @@ class VisualSearchService:
             explanation=f"Ranked {len(results)} matches by dense vector similarity (SigLIP-base-patch16-224). Metric: {req.metric.value.capitalize()}.",
         )
 
+        get_metrics_collector().record_search(duration_ms=total_time_ms, result_count=len(results))
         self._record_unified_history(resp, req)
         return resp
 

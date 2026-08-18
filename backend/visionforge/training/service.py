@@ -10,6 +10,7 @@ from pathlib import Path
 from visionforge.ai.types import TaskType
 from visionforge.core.config import get_settings
 from visionforge.core.exceptions import VisionForgeException
+from visionforge.core.telemetry import get_metrics_collector
 from visionforge.datasets.schemas import DatasetPreparationManifest
 from visionforge.datasets.service import (
     DatasetPreparationService,
@@ -138,18 +139,30 @@ class TrainingService:
         )
         self._history_store.add_run(run)
 
+        collector = get_metrics_collector()
+        collector.register_job(
+            job_id=run_id,
+            job_type="training",
+            name=f"Training: {config.experiment_name} ({config.model_name})",
+            metadata={"dataset_id": config.dataset_id, "epochs": config.epochs},
+        )
+        collector.start_job(run_id)
+
         try:
             # 1. Validation
             run.status = TrainingStatus.VALIDATING
             self._history_store.add_run(run)
+            collector.update_job_progress(run_id, 10.0)
 
             # 2. Adaptation
             run.status = TrainingStatus.PREPARING
             manifest = DatasetPreparationManifest(**manifest_dict)
             dataset_yaml = self._adapter.prepare_yolo_dataset(manifest)
+            collector.update_job_progress(run_id, 25.0)
 
             # 3. Execute PyTorch Training
             run.status = TrainingStatus.RUNNING
+            collector.update_job_progress(run_id, 50.0)
             cache_root = Path(get_settings().model_cache_dir).expanduser().resolve()
             output_root = cache_root.parent / "training" / "runs"
             trainer = UltralyticsTrainer(output_root=output_root)
@@ -162,6 +175,7 @@ class TrainingService:
             run.best_metrics = best_metrics
             run.best_checkpoint_path = str(best_pt)
             run.last_checkpoint_path = str(last_pt)
+            collector.update_job_progress(run_id, 85.0)
 
             # 4. Separate Test Set Evaluation
             run.status = TrainingStatus.VERIFYING
@@ -172,6 +186,14 @@ class TrainingService:
             run.status = TrainingStatus.COMPLETED
             run.completed_at = datetime.now(UTC).isoformat()
             self._history_store.add_run(run)
+            collector.complete_job(
+                run_id,
+                metadata={
+                    "map50": test_eval.map50,
+                    "precision": test_eval.precision,
+                    "recall": test_eval.recall,
+                },
+            )
             logger.info("Successfully completed training run '%s'", run_id)
             return run
 
@@ -179,6 +201,15 @@ class TrainingService:
             run.status = TrainingStatus.FAILED
             run.error_message = str(exc)
             self._history_store.add_run(run)
+            collector.fail_job(
+                job_id=run_id,
+                error_code="TRAINING_JOB_FAILED",
+                error_summary=str(exc),
+                details={
+                    "experiment_name": config.experiment_name,
+                    "dataset_id": config.dataset_id,
+                },
+            )
             logger.error("Training run '%s' failed: %s", run_id, str(exc))
             raise
 

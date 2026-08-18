@@ -43,7 +43,14 @@ class RequestTracingMiddleware(BaseHTTPMiddleware):
             raise
         finally:
             process_time_ms = (time.perf_counter() - start_time) * 1000
-            collector.record_request(duration_ms=process_time_ms, is_error=is_error)
+            status_code = response.status_code if "response" in locals() else 500
+            collector.record_request(
+                duration_ms=process_time_ms,
+                is_error=is_error,
+                method=request.method,
+                path=request.url.path,
+                status_code=status_code,
+            )
 
             if "response" in locals():
                 response.headers["X-Request-ID"] = request_id

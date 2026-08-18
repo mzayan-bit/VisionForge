@@ -1,13 +1,20 @@
-"""System diagnostics API endpoints."""
+"""System diagnostics, Prometheus metrics, and Job Observability API endpoints."""
 
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request, Response
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
 from visionforge.core.dependencies import SystemRuntimeDep
+from visionforge.core.exceptions import JobNotFoundException
 from visionforge.core.responses import APIResponse, success_response
-from visionforge.core.telemetry import SystemDiagnosticsSnapshot, get_metrics_collector
+from visionforge.core.telemetry import (
+    FailureRecord,
+    JobRecord,
+    SystemDiagnosticsSnapshot,
+    get_metrics_collector,
+)
 
 router = APIRouter(tags=["System"])
 
@@ -84,4 +91,70 @@ async def get_system_diagnostics() -> APIResponse[SystemDiagnosticsSnapshot]:
     return success_response(
         data=snapshot,
         message="System operational telemetry snapshot retrieved successfully",
+    )
+
+
+@router.get(
+    "/system/metrics",
+    summary="Get Prometheus formatted metrics",
+    description="Exposes system telemetry, request counts, latencies, and CV operational metrics for Prometheus scrapers.",
+)
+async def get_prometheus_metrics() -> Response:
+    """Return Prometheus text exposition format metrics."""
+    collector = get_metrics_collector()
+    return PlainTextResponse(
+        content=collector.export_prometheus_metrics(),
+        media_type="text/plain; version=0.0.4; charset=utf-8",
+    )
+
+
+@router.get(
+    "/system/jobs",
+    response_model=APIResponse[list[JobRecord]],
+    summary="List background jobs and workloads",
+    description="Returns list of recent and active background jobs with lifecycle timestamps, progress, and error details.",
+)
+async def get_system_jobs(
+    limit: int = Query(default=50, ge=1, le=200, description="Max jobs to return"),
+) -> APIResponse[list[JobRecord]]:
+    """Return list of observed background jobs."""
+    collector = get_metrics_collector()
+    jobs = collector.list_jobs(limit=limit)
+    return success_response(
+        data=jobs,
+        message=f"Retrieved {len(jobs)} background jobs",
+    )
+
+
+@router.get(
+    "/system/jobs/{job_id}",
+    response_model=APIResponse[JobRecord],
+    summary="Get job details by ID",
+    description="Returns deep execution metadata, duration, and error summary for a specific job.",
+)
+async def get_system_job(job_id: str) -> APIResponse[JobRecord]:
+    """Retrieve details for a specific background job."""
+    collector = get_metrics_collector()
+    job = collector.get_job(job_id)
+    if not job:
+        raise JobNotFoundException(job_id=job_id)
+    return success_response(
+        data=job,
+        message=f"Job '{job_id}' details retrieved",
+    )
+
+
+@router.get(
+    "/system/errors",
+    response_model=APIResponse[list[FailureRecord]],
+    summary="List recent subsystem failures",
+    description="Returns ring-buffer of recent operational failures with request IDs and diagnostic context.",
+)
+async def get_recent_errors() -> APIResponse[list[FailureRecord]]:
+    """Return list of recent subsystem failures."""
+    collector = get_metrics_collector()
+    snapshot = collector.get_snapshot()
+    return success_response(
+        data=snapshot.recent_failures,
+        message=f"Retrieved {len(snapshot.recent_failures)} failure records",
     )
