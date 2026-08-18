@@ -5,152 +5,172 @@
  \ \_/ / \__ \ | (_) | | | |  _| (_) | | | (_| |  __/
   \___/|_|___/_|\___/|_| |_|_|  \___/|_|  \__, |\___|
                                           |___/      
-                   Computer Vision Workbench
+                   Computer Vision Research Workbench
 ```
 
-> A modern, open-source Computer Vision Workbench for researchers and engineers to integrate, benchmark, visualize, and experiment with state-of-the-art computer vision foundation models.
+> An open-source, reproducible Computer Vision Research Platform for dataset intelligence, model training, benchmarking, error analysis, Grad-CAM explainability, video understanding, and research experiment tracking.
 
 ---
 
-## 📌 Project Overview
+## 📌 What is VisionForge?
 
-**VisionForge** is a Visual AI laboratory designed for computer vision research and engineering. Rather than focusing on a single detection or segmentation framework, VisionForge provides a unified, extensible, and high-performance workbench platform.
+**VisionForge** is a full-stack computer vision workbench designed for AI researchers and engineers. It covers the entire empirical research lifecycle:
 
-It empowers developers to wrap foundation vision models into clean standard abstractions, run rigorous performance benchmarks (latency, memory, throughput), and interactively inspect multidimensional spatial annotations.
+$$\text{Dataset Intelligence} \longrightarrow \text{Model Training} \longrightarrow \text{Model Registry} \longrightarrow \text{Inference} \longrightarrow \text{Evaluation} \longrightarrow \text{Error Analysis} \longrightarrow \text{Explainability} \longrightarrow \text{Research Reports}$$
 
-## 🎯 Vision & Goals
+### Core Capabilities:
+- **Dataset Intelligence & Versioning**: Multi-dimensional health scorecards, label geometry checks, pre-split validation, and leakage detection.
+- **Model Training Lab**: Transfer learning and fine-tuning with YOLO11 and RT-DETR, real-time loss tracking, learning rate schedules, and checkpoint exports.
+- **Model Registry**: Immutable version packaging, dependency tracking, metadata persistence, and hardware device targeting.
+- **Evaluation & Benchmark Lab**: Multi-metric precision/recall/mAP analysis, IoU threshold curves, confusion matrices, and runtime profiling.
+- **Diagnostic Error Analysis & Failure Gallery**: Isolated false positives, false negatives, poor localization, and active learning candidate curation.
+- **Explainability & Attribution**: PyTorch Grad-CAM spatial heatmaps with target bounding box concentration scoring.
+- **Video & Temporal Intelligence**: Multi-object trajectory tracking, spatial ROI zones, dwell time calculation, and temporal rule engine.
+- **Multimodal Visual Search & Query**: 768-dimensional dense visual memory index for sub-millisecond similarity retrieval.
+- **Research Experiment Tracking**: Immutable lineage graphs, hypothesis validation, and structured research report synthesis.
 
-- **Clean Architecture & Modularity:** Decoupled core abstractions ensuring model wrappers, visualization canvases, and benchmark pipelines operate independently.
-- **Extensibility:** Standardized model adapter interfaces supporting zero-shot vision-language models, object detectors, segmentation transformers, and depth estimators.
-- **Developer Experience:** Blazing-fast dependency management with `uv`, strict linting via `ruff`, type-safe frontend with TypeScript, and automated testing.
-- **Research Quality:** Empirical benchmarking protocols and reproducible profiling metrics for computer vision foundation research.
+---
 
-## 🚦 Current Status
+## 🚀 Quick Start (Docker Compose)
 
-**Foundational Architecture Phase (v0.1.0-alpha)**
+The fastest way to launch VisionForge is using Docker Compose:
 
-- Modern Python backend package initialized with `uv`, FastAPI, Pydantic v2, and Pytest suite.
-- Clean Next.js App Router dashboard UI with TypeScript and TailwindCSS.
-- Cross-cutting quality verification tooling (`ruff`, `pytest`, `eslint`, pre-commit).
-- Comprehensive project documentation and GitHub workflow templates.
+```bash
+# 1. Clone the repository
+git clone https://github.com/mzayan-bit/VisionForge.git
+cd VisionForge
 
-*(No AI models or inference logic are included in this initial foundation prompt).*
+# 2. Copy environment configuration
+cp .env.example .env
 
-## 📐 Planned Architecture
-
-```text
-┌─────────────────────────────────────────────────────────┐
-│              VisionForge Workbench UI                   │
-│          Next.js + TypeScript + TailwindCSS             │
-└───────────────────────────┬─────────────────────────────┘
-                            │ REST / WebSockets
-┌───────────────────────────▼─────────────────────────────┐
-│                 FastAPI Backend Service                 │
-│                                                         │
-│ ┌──────────────────┐ ┌──────────────────┐ ┌───────────┐ │
-│ │  Model Registry  │ │ Benchmark Engine │ │ Visualizer│ │
-│ └──────────────────┘ └──────────────────┘ └───────────┘ │
-└───────────────────────────┬─────────────────────────────┘
-                            │ Model Adapters
-┌───────────────────────────▼─────────────────────────────┐
-│               Foundation Vision Models                  │
-│       (Segment Anything, Grounding DINO, YOLOv8)        │
-└─────────────────────────────────────────────────────────┘
+# 3. Start containerized services
+make up
+# or: docker compose up -d --build
 ```
 
-## 📁 Repository Structure
+### Accessing VisionForge:
+- **Frontend Workbench UI**: [http://localhost:3000](http://localhost:3000)
+- **Backend REST API**: [http://localhost:8000](http://localhost:8000)
+- **Interactive Swagger Docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
+- **Health Check Endpoint**: [http://localhost:8000/health](http://localhost:8000/health)
 
-```text
-VisionForge/
-├── .github/                 # Issue templates, PR template, CI workflows
-│   ├── ISSUE_TEMPLATE/
-│   │   ├── bug_report.md
-│   │   └── feature_request.md
-│   ├── PULL_REQUEST_TEMPLATE.md
-│   └── workflows/
-│       └── ci.yml
-├── backend/                 # FastAPI REST application managed by uv
-│   ├── pyproject.toml       # Dependencies, ruff, and pytest config
-│   ├── visionforge/         # Python source package
-│   └── tests/               # Backend unit and API tests
-├── frontend/                # Next.js App Router application
-│   ├── package.json         # Dependencies & scripts
-│   ├── src/                 # React components & app routes
-│   └── tsconfig.json        # TypeScript configuration
-├── docs/                    # Architectural & developer documentation
-│   ├── ARCHITECTURE.md
-│   └── DEVELOPMENT.md
-├── scripts/                 # Developer environment helper scripts
-│   ├── dev.sh               # Local development runner
-│   └── lint.sh              # Unified quality check script
-├── configs/                 # Example application configurations
-├── tests/                   # Cross-cutting integration tests
-├── .editorconfig            # Formatting rules across editors
-├── .gitignore               # Ignored files for Python & Node
-├── .pre-commit-config.yaml  # Pre-commit hook configuration
-├── LICENSE                  # MIT License
-└── README.md                # Project landing documentation
+To stop the containers:
+```bash
+make down
+# or: docker compose down
 ```
 
-## 🛠 Technology Stack
+---
 
-- **Backend:** Python 3.11+, `uv` package manager, FastAPI, Pydantic v2, Uvicorn, Pytest, Ruff.
-- **Frontend:** Next.js 16 (App Router), TypeScript, React 19, TailwindCSS v4, ESLint.
-- **Tooling & CI:** Pre-commit hooks, GitHub Actions CI.
+## 💻 Local Development Setup (Native)
 
-## 🚀 Getting Started
+### Prerequisites:
+- Python `3.11+` and [`uv`](https://astral.sh/uv) installer
+- Node.js `20+` and `npm`
 
-### Prerequisites
+```bash
+# 1. Install dependencies
+make install
 
-- [uv](https://github.com/astral-sh/uv) package manager (`brew install uv` or `curl -LsSf https://astral.sh/uv/install.sh | sh`)
-- [Node.js](https://nodejs.org/) v20+ and `npm`
+# 2. Start local development servers (Backend :8000 + Frontend :3000)
+make dev
 
-### 1. Backend Setup
+# 3. Seed real COCO8 benchmark dataset into the workbench
+make seed
+```
 
+---
+
+## ⚙️ Environment Configuration
+
+VisionForge reads environment variables from `.env`. Copy `.env.example` to start:
+
+```bash
+cp .env.example .env
+```
+
+| Variable | Default | Purpose |
+| :--- | :--- | :--- |
+| `ENVIRONMENT` | `development` | Active runtime environment (`development`, `production`). |
+| `DEBUG` | `false` | Enable or disable verbose stack traces. |
+| `LOG_LEVEL` | `INFO` | Logging severity (`DEBUG`, `INFO`, `WARNING`, `ERROR`). |
+| `BACKEND_PORT` | `8000` | Published backend port. |
+| `FRONTEND_PORT` | `3000` | Published frontend port. |
+| `DATA_DIR` | `~/.cache/visionforge` | Persistent storage directory for datasets and models. |
+| `DEFAULT_DEVICE` | `auto` | Target compute engine (`auto`, `cpu`, `cuda`, `mps`). |
+| `DATABASE_URL` | *None* | Optional PostgreSQL connection string. |
+| `REDIS_URL` | *None* | Optional Redis cache/broker URL. |
+| `QDRANT_URL` | *None* | Optional Qdrant vector database URL. |
+| `NEO4J_URL` | *None* | Optional Neo4j graph database URL. |
+| `MLFLOW_TRACKING_URI` | *None* | Optional MLflow tracking server URI. |
+
+---
+
+## 🧪 Running Tests & Quality Verification
+
+```bash
+# Run full automated test suite (233+ unit and lifecycle tests)
+make test
+
+# Run code style & lint checks (ruff & eslint)
+make lint
+
+# Automatically format code
+make format
+```
+
+---
+
+## 🧠 Training a Model
+
+### 1. Local Transfer Learning (Apple Silicon M4 / CPU):
+Execute transfer learning on the ingested COCO8 dataset:
 ```bash
 cd backend
-uv venv
-uv pip install -e ".[dev]"
-uv run uvicorn visionforge.main:app --reload --port 8000
+uv run python -c "
+from visionforge.datasets.adapters.coco8_adapter import COCO8Adapter
+from visionforge.training.service import get_training_service
+from visionforge.training.schemas import TrainingConfig
+
+adapter = COCO8Adapter()
+summary, manifest, profile = adapter.ingest_dataset()
+
+train_svc = get_training_service()
+config = TrainingConfig(
+    experiment_name='exp_coco8_transfer',
+    dataset_id='coco8',
+    preparation_id=manifest.preparation_id,
+    model_name='yolo11n.pt',
+    epochs=2,
+    batch_size=4,
+    imgsz=320,
+    learning_rate=0.01,
+    random_seed=42,
+    device='cpu',
+)
+run = train_svc.create_training_run(config)
+print('Training completed with mAP@50:', run.test_evaluation.map50)
+"
 ```
 
-The backend API documentation will be accessible at [http://localhost:8000/docs](http://localhost:8000/docs).
-
-### 2. Frontend Setup
-
+### 2. Remote GPU Training (Google Colab):
+For multi-GPU / CUDA acceleration, run the dedicated Colab script:
 ```bash
-cd frontend
-npm install
-npm run dev
+python scripts/train_colab.py
 ```
+See [`docs/real-cv-experiment.md`](docs/real-cv-experiment.md) for full reproduction results.
 
-The VisionForge Workbench dashboard will be accessible at [http://localhost:3000](http://localhost:3000).
+---
 
-### 3. Running Quality Checks
+## 📚 Detailed Documentation
 
-Execute all linting, formatting, and unit tests across the workspace:
+- [System Architecture & Service Map](docs/architecture.md)
+- [Production Deployment Guide](docs/deployment.md)
+- [Local Development Guide](docs/development.md)
+- [Real Computer Vision Lifecycle Experiment Report](docs/real-cv-experiment.md)
 
-```bash
-./scripts/lint.sh
-```
-
-## 🗺 High-Level Roadmap
-
-- **Phase 1 (Current):** Foundational architecture, packaging, developer tooling, and clean UI/API layouts.
-- **Phase 2:** Standardized `BaseVisionModel` abstract adapter interface & registry service.
-- **Phase 3:** Interactive image canvas & spatial visualizer frontend components.
-- **Phase 4:** Empirical latency, throughput, and memory benchmarking engine integration.
-- **Phase 5:** Plug-and-play foundation model wrapper modules (Detection, Segmentation, Zero-Shot VLM).
-
-## 🤝 Contributing
-
-We welcome community contributions! Please read our [Development Guide](docs/DEVELOPMENT.md) for environment setup and pull request guidelines.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/model-adapter`)
-3. Ensure quality checks pass (`./scripts/lint.sh`)
-4. Open a Pull Request using our [PR Template](.github/PULL_REQUEST_TEMPLATE.md)
+---
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+VisionForge is released under the [MIT License](LICENSE).
