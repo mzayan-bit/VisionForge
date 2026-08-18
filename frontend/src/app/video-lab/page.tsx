@@ -52,6 +52,19 @@ import { Button } from "@/components/ui/Button";
 
 // ─── Interfaces ───────────────────────────────────────────────────
 
+interface VideoMetadata {
+  video_id: string;
+  filename: string;
+  duration_sec: number;
+  fps: number;
+  frame_count: number;
+  width: number;
+  height: number;
+  codec: string;
+  size_bytes: number;
+  created_at: string;
+}
+
 interface TrajectoryPoint {
   frame_index: number;
   timestamp_sec: number;
@@ -196,6 +209,7 @@ interface VideoInferenceRun {
 
 export default function VideoLabPage() {
   // ─── State ──────────────────────────────────────────────────────────
+  const [videos, setVideos] = useState<VideoMetadata[]>([]);
   const [sessions, setSessions] = useState<VideoSession[]>([]);
   const [selectedSession, setSelectedSession] = useState<VideoSession | null>(null);
   const [runs, setRuns] = useState<VideoInferenceRun[]>([]);
@@ -304,9 +318,22 @@ export default function VideoLabPage() {
 
   // Initial Load
   useEffect(() => {
+    fetchVideos();
     fetchSessions();
     fetchRuns();
   }, []);
+
+  const fetchVideos = async () => {
+    try {
+      const res = await fetch("/api/v1/video/videos");
+      if (res.ok) {
+        const data = await res.json();
+        setVideos(data);
+      }
+    } catch (e) {
+      console.warn("Using fallback videos:", e);
+    }
+  };
 
   const fetchSessions = async () => {
     try {
@@ -520,17 +547,44 @@ export default function VideoLabPage() {
         <div className="lg:col-span-7 space-y-4">
           {/* Video Player Canvas Card */}
           <div className="bg-slate-900/70 border border-slate-800 rounded-xl overflow-hidden shadow-2xl backdrop-blur-sm">
-            <div className="p-4 border-b border-slate-800/80 flex items-center justify-between bg-slate-900/90">
+            <div className="p-4 border-b border-slate-800/80 flex flex-wrap items-center justify-between gap-3 bg-slate-900/90">
               <div className="flex items-center gap-3">
-                <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="font-semibold text-sm tracking-wide text-slate-200">
-                  {selectedSession?.video_source || "Security Stream #01"}
-                </span>
-                <span className="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-400 font-mono">
+                <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse flex-shrink-0" />
+                <span className="text-xs text-slate-400 font-mono flex-shrink-0">VIDEO:</span>
+                <select
+                  value={selectedRun?.run_id || ""}
+                  onChange={(e) => {
+                    const found = runs.find((r) => r.run_id === e.target.value);
+                    if (found) {
+                      setSelectedRun(found);
+                      setCurrentTimeSec(0.0);
+                      fetchRegions(found.video_id);
+                      fetchEvents(found.run_id);
+                    }
+                  }}
+                  className="bg-slate-950 border border-slate-700 hover:border-blue-500 rounded-lg px-3 py-1.5 text-xs font-semibold text-white focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors max-w-[260px] md:max-w-[340px] truncate"
+                >
+                  {runs.map((r) => {
+                    const videoMeta = videos.find((v) => v.video_id === r.video_id);
+                    const filename =
+                      videoMeta?.filename ||
+                      (r.video_id === "sample_traffic_01"
+                        ? "warehouse_security_stream_01.mp4"
+                        : `${r.video_id}.mp4`);
+                    const isCustom = r.video_id.startsWith("vid_");
+                    return (
+                      <option key={r.run_id} value={r.run_id}>
+                        {filename} {isCustom ? "(Custom Upload)" : "(Demo Stream)"} — {r.total_tracks} tracks ({r.duration_sec}s)
+                      </option>
+                    );
+                  })}
+                </select>
+
+                <span className="text-xs px-2 py-1 rounded bg-slate-800 text-slate-300 font-mono hidden sm:inline-block">
                   {selectedSession?.width || 1920}x{selectedSession?.height || 1080} @ {selectedSession?.fps || 30} FPS
                 </span>
               </div>
-              <div className="flex items-center gap-2 text-xs text-slate-400 font-mono">
+              <div className="flex items-center gap-2 text-xs text-slate-400 font-mono bg-slate-950 px-2.5 py-1 rounded border border-slate-800">
                 <span>
                   {currentTimeSec.toFixed(2)}s / {(selectedRun?.duration_sec || 10.0).toFixed(2)}s
                 </span>
