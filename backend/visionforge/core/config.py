@@ -51,6 +51,10 @@ class VisionForgeSettings(BaseSettings):
     )
 
     # AI Core Infrastructure Settings
+    data_dir: str = Field(
+        default="~/.cache/visionforge",
+        description="Root persistent storage directory for datasets, models, memory, and telemetry",
+    )
     model_cache_dir: str = Field(
         default="~/.cache/visionforge/models",
         description="Directory path for cached model artifacts and checkpoints",
@@ -63,6 +67,36 @@ class VisionForgeSettings(BaseSettings):
         default=3,
         description="Maximum number of loaded models permitted in GPU/RAM memory cache",
         ge=1,
+    )
+
+    # Optional External Integrations & Infrastructure (All optional with built-in fallbacks)
+    database_url: str | None = Field(
+        default=None,
+        description="Optional PostgreSQL/SQL database connection string",
+    )
+    redis_url: str | None = Field(
+        default=None,
+        description="Optional Redis cache and job broker connection string",
+    )
+    qdrant_url: str | None = Field(
+        default=None,
+        description="Optional Qdrant vector database URL (e.g. http://qdrant:6333)",
+    )
+    neo4j_url: str | None = Field(
+        default=None,
+        description="Optional Neo4j graph database URL (e.g. bolt://neo4j:7687)",
+    )
+    mlflow_tracking_uri: str | None = Field(
+        default=None,
+        description="Optional MLflow tracking server URI (e.g. http://mlflow:5000)",
+    )
+    openai_api_key: str | None = Field(
+        default=None,
+        description="Optional OpenAI API key for Vision-Language model execution",
+    )
+    anthropic_api_key: str | None = Field(
+        default=None,
+        description="Optional Anthropic API key for Vision-Language model execution",
     )
 
     @field_validator("log_level")

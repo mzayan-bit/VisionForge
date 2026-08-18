@@ -37,7 +37,21 @@ def create_app() -> FastAPI:
     # 5. Include API Version Routers
     app.include_router(api_v1_router, prefix="/api")
 
-    # 6. Root Metadata Endpoint
+    # 6. Root Metadata & Health Endpoints
+    @app.get(
+        "/health",
+        summary="Direct Health Check",
+        description="Returns lightweight health check status for Docker/Kubernetes container orchestrators.",
+    )
+    async def health_check() -> dict:
+        """Lightweight container health probe endpoint."""
+        return {
+            "status": "ok",
+            "service": "visionforge-backend",
+            "version": settings.version,
+            "environment": settings.environment.value,
+        }
+
     @app.get(
         "/",
         response_model=APIResponse[dict],

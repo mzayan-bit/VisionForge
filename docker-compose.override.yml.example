@@ -1,0 +1,49 @@
+# ==============================================================================
+# VisionForge Docker Compose Override Example (Development & Extended Services)
+# Copy this file to `docker-compose.override.yml` to enable live code mounts or
+# optional external infrastructure services.
+# ==============================================================================
+
+services:
+  backend:
+    environment:
+      - ENVIRONMENT=development
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+    # Live code reload mount for development
+    volumes:
+      - ./backend/visionforge:/app/visionforge:ro
+      - visionforge_data:/data
+    command: ["uvicorn", "visionforge.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  # ----------------------------------------------------------------------------
+  # Optional: Redis Cache & Async Job Broker
+  # ----------------------------------------------------------------------------
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: visionforge-redis
+  #   restart: unless-stopped
+  #   ports:
+  #     - "6379:6379"
+  #   volumes:
+  #     - redis_data:/data
+  #   networks:
+  #     - visionforge_net
+
+  # ----------------------------------------------------------------------------
+  # Optional: Qdrant Vector Database
+  # ----------------------------------------------------------------------------
+  # qdrant:
+  #   image: qdrant/qdrant:v1.9.0
+  #   container_name: visionforge-qdrant
+  #   restart: unless-stopped
+  #   ports:
+  #     - "6333:6333"
+  #   volumes:
+  #     - qdrant_data:/qdrant/storage
+  #   networks:
+  #     - visionforge_net
+
+# volumes:
+#   redis_data:
+#   qdrant_data:

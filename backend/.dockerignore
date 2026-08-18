@@ -1,0 +1,28 @@
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.venv/
+venv/
+~
+
+# Model weights & local data cache (should not be in image layers)
+*.pt
+*.bin
+*.onnx
+*.part
+downloads/
+datasets/
+checkpoints/
+
+# Git & IDE
+.git/
+.gitignore
+.vscode/
+.idea/
+.DS_Store

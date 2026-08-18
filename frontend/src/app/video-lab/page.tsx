@@ -237,7 +237,7 @@ export default function VideoLabPage() {
 
   const fetchSessions = async () => {
     try {
-      const res = await fetch("http://localhost:8000/api/v1/video/sessions");
+      const res = await fetch("/api/v1/video/sessions");
       if (res.ok) {
         const data = await res.json();
         setSessions(data);
@@ -250,7 +250,7 @@ export default function VideoLabPage() {
 
   const fetchRuns = async () => {
     try {
-      const res = await fetch("http://localhost:8000/api/v1/video/runs");
+      const res = await fetch("/api/v1/video/runs");
       if (res.ok) {
         const data = await res.json();
         setRuns(data);
@@ -267,7 +267,7 @@ export default function VideoLabPage() {
 
   const fetchRegions = async (videoId: string) => {
     try {
-      const res = await fetch(`http://localhost:8000/api/v1/events/regions?video_id=${videoId}`);
+      const res = await fetch(`/api/v1/events/regions?video_id=${videoId}`);
       if (res.ok) {
         const data = await res.json();
         setRegions(data);
@@ -279,7 +279,7 @@ export default function VideoLabPage() {
 
   const fetchEvents = async (runId: string) => {
     try {
-      const res = await fetch(`http://localhost:8000/api/v1/events/runs/${runId}`);
+      const res = await fetch(`/api/v1/events/runs/${runId}`);
       if (res.ok) {
         const data = await res.json();
         setEvents(data);
@@ -316,7 +316,7 @@ export default function VideoLabPage() {
 
     setIsQuerying(true);
     try {
-      const res = await fetch("http://localhost:8000/api/v1/query/ask", {
+      const res = await fetch("/api/v1/query/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -339,7 +339,7 @@ export default function VideoLabPage() {
   const handleCreateRegion = async () => {
     if (!selectedRun) return;
     try {
-      const res = await fetch("http://localhost:8000/api/v1/events/regions", {
+      const res = await fetch("/api/v1/events/regions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -367,7 +367,7 @@ export default function VideoLabPage() {
   const handleCompareVideos = async () => {
     if (!runs || runs.length < 2) return;
     try {
-      const res = await fetch("http://localhost:8000/api/v1/video/compare", {
+      const res = await fetch("/api/v1/video/compare", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -422,7 +422,7 @@ export default function VideoLabPage() {
               Define ROI Zone
             </Button>
 
-            <Link href={`http://localhost:8000/api/v1/video/runs/${selectedRun?.run_id}/export`} target="_blank">
+            <Link href={`/api/v1/video/runs/${selectedRun?.run_id}/export`} target="_blank">
               <Button variant="outline" className="border-slate-700 bg-slate-900/60 hover:bg-slate-800 text-slate-200">
                 <Download className="w-4 h-4 mr-2 text-sky-400" />
                 Export CSV

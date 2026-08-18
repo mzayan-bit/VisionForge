@@ -1,0 +1,86 @@
+# ==============================================================================
+# VisionForge Production-Ready Docker Compose Architecture
+# ==============================================================================
+
+services:
+  # ----------------------------------------------------------------------------
+  # Backend API & Computer Vision Research Engine
+  # ----------------------------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: visionforge-backend
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - DEBUG=${DEBUG:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - HOST=0.0.0.0
+      - PORT=8000
+      - DATA_DIR=/data
+      - MODEL_CACHE_DIR=/data/models
+      - DEFAULT_DEVICE=${DEFAULT_DEVICE:-auto}
+      - CORS_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000","http://localhost:${FRONTEND_PORT:-3000}"]
+      - DATABASE_URL=${DATABASE_URL:-}
+      - REDIS_URL=${REDIS_URL:-}
+      - QDRANT_URL=${QDRANT_URL:-}
+      - NEO4J_URL=${NEO4J_URL:-}
+      - MLFLOW_TRACKING_URI=${MLFLOW_TRACKING_URI:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+    volumes:
+      - visionforge_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - visionforge_net
+
+  # ----------------------------------------------------------------------------
+  # Frontend Web Workbench Application (Next.js 16)
+  # ----------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: visionforge-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - BACKEND_INTERNAL_URL=http://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - visionforge_net
+
+# ------------------------------------------------------------------------------
+# Persistent Volume Configuration
+# ------------------------------------------------------------------------------
+volumes:
+  visionforge_data:
+    name: visionforge_data
+    driver: local
+
+# ------------------------------------------------------------------------------
+# Internal Container Networking
+# ------------------------------------------------------------------------------
+networks:
+  visionforge_net:
+    name: visionforge_net
+    driver: bridge
