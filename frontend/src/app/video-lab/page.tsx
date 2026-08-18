@@ -32,6 +32,15 @@ import {
   Settings,
   ShieldCheck,
   Sparkles,
+  Square,
+  Hexagon,
+  Edit2,
+  Copy,
+  Check,
+  X,
+  Crosshair,
+  MousePointer,
+  Info,
   Sliders,
   Tag,
   Trash2,
@@ -239,10 +248,21 @@ export default function VideoLabPage() {
   const [isQuerying, setIsQuerying] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<"timeline" | "tracks" | "regions" | "query" | "lineage">("timeline");
 
-  // Region Creation Modal
-  const [isRegionModalOpen, setIsRegionModalOpen] = useState<boolean>(false);
-  const [newRegionName, setNewRegionName] = useState<string>("Zone A");
-  const [newRegionColor, setNewRegionColor] = useState<string>("#3b82f6");
+  // Zone / Spatial ROI Interactive State
+  const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
+  const [zoneEditorMode, setZoneEditorMode] = useState<"IDLE" | "DRAW_RECT" | "DRAW_POLY" | "EDIT_ZONE">("IDLE");
+  const [drawingRect, setDrawingRect] = useState<{ startX: number; startY: number; currentX: number; currentY: number } | null>(null);
+  const [drawingPolyPoints, setDrawingPolyPoints] = useState<Array<[number, number]>>([]);
+  const [dragState, setDragState] = useState<{
+    regionId: string;
+    mode: "MOVE_ALL" | "HANDLE_NW" | "HANDLE_NE" | "HANDLE_SW" | "HANDLE_SE" | "VERTEX";
+    vertexIdx?: number;
+    startVidX: number;
+    startVidY: number;
+    initialCoords: number[][];
+  } | null>(null);
+  const [renamingRegionId, setRenamingRegionId] = useState<string | null>(null);
+  const [renameInputValue, setRenameInputValue] = useState<string>("");
 
   // Video Comparison Modal
   const [isCompareModalOpen, setIsCompareModalOpen] = useState<boolean>(false);
@@ -406,6 +426,248 @@ export default function VideoLabPage() {
     }
   };
 
+  // ─── Spatial ROI Coordinates & Geometry Utilities ──────────────────
+
+  const clientToVideoCoords = (clientX: number, clientY: number): [number, number] | null => {
+    if (!videoRef.current) return null;
+    const rect = videoRef.current.getBoundingClientRect();
+    const currentVideoMeta = videos.find((v) => v.video_id === selectedRun?.video_id);
+    const vidW = currentVideoMeta?.width || actualVideoWidth || selectedSession?.width || 1920;
+    const vidH = currentVideoMeta?.height || actualVideoHeight || selectedSession?.height || 1080;
+    const elemW = rect.width;
+    const elemH = rect.height;
+    if (elemW <= 0 || elemH <= 0) return null;
+
+    const vidAspect = vidW / vidH;
+    const elemAspect = elemW / elemH;
+
+    let renderW = elemW;
+    let renderH = elemH;
+    let offsetX = 0;
+    let offsetY = 0;
+
+    if (elemAspect > vidAspect) {
+      renderW = elemH * vidAspect;
+      offsetX = (elemW - renderW) / 2;
+    } else {
+      renderH = elemW / vidAspect;
+      offsetY = (elemH - renderH) / 2;
+    }
+
+    const relX = clientX - rect.left - offsetX;
+    const relY = clientY - rect.top - offsetY;
+
+    const clampedX = Math.max(0, Math.min(renderW, relX));
+    const clampedY = Math.max(0, Math.min(renderH, relY));
+
+    const vidX = (clampedX / renderW) * vidW;
+    const vidY = (clampedY / renderH) * vidH;
+
+    return [Math.round(vidX * 10) / 10, Math.round(vidY * 10) / 10];
+  };
+
+  const isPointInRegion = (pt: [number, number], reg: RegionOfInterest): boolean => {
+    const [x, y] = pt;
+    if (reg.shape_type === "RECTANGLE") {
+      if (reg.coordinates.length === 2 && Array.isArray(reg.coordinates[0])) {
+        const xMin = Math.min(reg.coordinates[0][0], reg.coordinates[1][0]);
+        const yMin = Math.min(reg.coordinates[0][1], reg.coordinates[1][1]);
+        const xMax = Math.max(reg.coordinates[0][0], reg.coordinates[1][0]);
+        const yMax = Math.max(reg.coordinates[0][1], reg.coordinates[1][1]);
+        return x >= xMin && x <= xMax && y >= yMin && y <= yMax;
+      }
+      return false;
+    }
+    // Polygon ray-casting algorithm
+    const poly = reg.coordinates;
+    let inside = false;
+    const n = poly.length;
+    if (n < 3) return false;
+    for (let i = 0, j = n - 1; i < n; j = i++) {
+      const [xi, yi] = poly[i];
+      const [xj, yj] = poly[j];
+      const intersect = yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  };
+
+  const triggerRegenerateEvents = async (runId: string) => {
+    try {
+      const res = await fetch("/api/v1/events/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ run_id: runId }),
+      });
+      if (res.ok) {
+        const updatedEvents = await res.json();
+        setEvents(updatedEvents);
+      }
+    } catch (e) {
+      console.warn("Failed regenerating events:", e);
+    }
+  };
+
+  const handleCreateRectangleRegion = async (x1: number, y1: number, x2: number, y2: number) => {
+    if (!selectedRun) return;
+    const xMin = Math.min(x1, x2);
+    const yMin = Math.min(y1, y2);
+    const xMax = Math.max(x1, x2);
+    const yMax = Math.max(y1, y2);
+
+    if (Math.abs(xMax - xMin) < 15 || Math.abs(yMax - yMin) < 15) {
+      setDrawingRect(null);
+      return;
+    }
+
+    const zoneCount = regions.length + 1;
+    const zoneName = `Zone ${String.fromCharCode(64 + zoneCount)}`;
+    const colors = ["#3b82f6", "#10b981", "#f59e0b", "#ec4899", "#8b5cf6", "#06b6d4"];
+    const color = colors[(zoneCount - 1) % colors.length];
+
+    try {
+      const res = await fetch("/api/v1/events/regions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          video_id: selectedRun.video_id,
+          name: zoneName,
+          shape_type: "RECTANGLE",
+          coordinate_system: "PIXEL",
+          coordinates: [
+            [xMin, yMin],
+            [xMax, yMax],
+          ],
+          color,
+        }),
+      });
+      if (res.ok) {
+        const newReg = await res.json();
+        setRegions((prev) => [newReg, ...prev]);
+        setSelectedRegionId(newReg.region_id);
+        setZoneEditorMode("EDIT_ZONE");
+        await triggerRegenerateEvents(selectedRun.run_id);
+      }
+    } catch (e) {
+      console.error("Failed creating rectangle zone:", e);
+    } finally {
+      setDrawingRect(null);
+    }
+  };
+
+  const handleCreatePolygonRegion = async (points: Array<[number, number]>) => {
+    if (!selectedRun || points.length < 3) {
+      setDrawingPolyPoints([]);
+      return;
+    }
+
+    const zoneCount = regions.length + 1;
+    const zoneName = `Polygon ${String.fromCharCode(64 + zoneCount)}`;
+    const colors = ["#8b5cf6", "#ec4899", "#06b6d4", "#f59e0b", "#10b981", "#3b82f6"];
+    const color = colors[(zoneCount - 1) % colors.length];
+
+    try {
+      const res = await fetch("/api/v1/events/regions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          video_id: selectedRun.video_id,
+          name: zoneName,
+          shape_type: "POLYGON",
+          coordinate_system: "PIXEL",
+          coordinates: points,
+          color,
+        }),
+      });
+      if (res.ok) {
+        const newReg = await res.json();
+        setRegions((prev) => [newReg, ...prev]);
+        setSelectedRegionId(newReg.region_id);
+        setZoneEditorMode("EDIT_ZONE");
+        await triggerRegenerateEvents(selectedRun.run_id);
+      }
+    } catch (e) {
+      console.error("Failed creating polygon zone:", e);
+    } finally {
+      setDrawingPolyPoints([]);
+    }
+  };
+
+  const handleUpdateRegionGeometry = async (regionId: string, coordinates: number[][]) => {
+    if (!selectedRun) return;
+    try {
+      const res = await fetch(`/api/v1/events/regions/${regionId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ coordinates }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setRegions((prev) => prev.map((r) => (r.region_id === regionId ? updated : r)));
+        await triggerRegenerateEvents(selectedRun.run_id);
+      }
+    } catch (e) {
+      console.error("Failed updating region geometry:", e);
+    }
+  };
+
+  const handleRenameRegion = async (regionId: string, newName: string) => {
+    if (!newName.trim()) return;
+    try {
+      const res = await fetch(`/api/v1/events/regions/${regionId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newName.trim() }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setRegions((prev) => prev.map((r) => (r.region_id === regionId ? updated : r)));
+        if (selectedRun) await triggerRegenerateEvents(selectedRun.run_id);
+      }
+    } catch (e) {
+      console.error("Failed renaming region:", e);
+    } finally {
+      setRenamingRegionId(null);
+    }
+  };
+
+  const handleDuplicateRegion = async (regionId: string) => {
+    if (!selectedRun) return;
+    try {
+      const res = await fetch(`/api/v1/events/regions/${regionId}/duplicate?offset_px=30`, {
+        method: "POST",
+      });
+      if (res.ok) {
+        const dup = await res.json();
+        setRegions((prev) => [dup, ...prev]);
+        setSelectedRegionId(dup.region_id);
+        setZoneEditorMode("EDIT_ZONE");
+        await triggerRegenerateEvents(selectedRun.run_id);
+      }
+    } catch (e) {
+      console.error("Failed duplicating region:", e);
+    }
+  };
+
+  const handleDeleteRegion = async (regionId: string) => {
+    if (!selectedRun) return;
+    try {
+      const res = await fetch(`/api/v1/events/regions/${regionId}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        setRegions((prev) => prev.filter((r) => r.region_id !== regionId));
+        if (selectedRegionId === regionId) {
+          setSelectedRegionId(null);
+          setZoneEditorMode("IDLE");
+        }
+        await triggerRegenerateEvents(selectedRun.run_id);
+      }
+    } catch (e) {
+      console.error("Failed deleting region:", e);
+    }
+  };
+
   // Playback timer ticker (Fallback when native video is unavailable or loading)
   useEffect(() => {
     let interval: any = null;
@@ -480,33 +742,6 @@ export default function VideoLabPage() {
     }
   };
 
-  // Create Region ROI
-  const handleCreateRegion = async () => {
-    if (!selectedRun) return;
-    try {
-      const res = await fetch("/api/v1/events/regions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          video_id: selectedRun.video_id,
-          name: newRegionName,
-          shape_type: "RECTANGLE",
-          coordinates: [
-            [200, 200],
-            [700, 700],
-          ],
-          color: newRegionColor,
-        }),
-      });
-      if (res.ok) {
-        setIsRegionModalOpen(false);
-        fetchRegions(selectedRun.video_id);
-        fetchEvents(selectedRun.run_id);
-      }
-    } catch (err) {
-      console.error("Failed creating region:", err);
-    }
-  };
 
   // Compare Videos
   const handleCompareVideos = async () => {
@@ -587,10 +822,13 @@ export default function VideoLabPage() {
             <Button
               variant="outline"
               className="border-slate-700 bg-slate-900/60 hover:bg-slate-800 text-slate-200"
-              onClick={() => setIsRegionModalOpen(true)}
+              onClick={() => {
+                setZoneEditorMode("DRAW_RECT");
+                setActiveTab("regions");
+              }}
             >
               <MapPin className="w-4 h-4 mr-2 text-emerald-400" />
-              Define ROI Zone
+              Draw ROI Zone
             </Button>
 
             <Link href={`/api/v1/video/runs/${selectedRun?.run_id}/export`} target="_blank">
@@ -684,22 +922,188 @@ export default function VideoLabPage() {
                   {selectedSession?.width || 1920}x{selectedSession?.height || 1080} @ {selectedSession?.fps || 30} FPS
                 </span>
               </div>
-              <div className="flex items-center gap-2 text-xs text-slate-400 font-mono bg-slate-950 px-2.5 py-1 rounded border border-slate-800">
-                <span>
-                  {currentTimeSec.toFixed(2)}s / {(selectedRun?.duration_sec || 10.0).toFixed(2)}s
-                </span>
+
+              {/* Interactive Zone Editor Mode Switcher in Header */}
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
+                  <button
+                    onClick={() => {
+                      setZoneEditorMode("DRAW_RECT");
+                      setSelectedRegionId(null);
+                      setActiveTab("regions");
+                    }}
+                    className={`px-2.5 py-1 rounded text-xs flex items-center gap-1.5 transition-colors font-medium ${
+                      zoneEditorMode === "DRAW_RECT"
+                        ? "bg-blue-600 text-white shadow"
+                        : "text-slate-300 hover:bg-slate-800"
+                    }`}
+                    title="Click and drag on video to draw a rectangular monitoring zone"
+                  >
+                    <Square className="w-3.5 h-3.5" />
+                    <span>+ Rect Zone</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setZoneEditorMode("DRAW_POLY");
+                      setDrawingPolyPoints([]);
+                      setSelectedRegionId(null);
+                      setActiveTab("regions");
+                    }}
+                    className={`px-2.5 py-1 rounded text-xs flex items-center gap-1.5 transition-colors font-medium ${
+                      zoneEditorMode === "DRAW_POLY"
+                        ? "bg-purple-600 text-white shadow"
+                        : "text-slate-300 hover:bg-slate-800"
+                    }`}
+                    title="Click vertices on video to draw a polygon monitoring zone"
+                  >
+                    <Hexagon className="w-3.5 h-3.5" />
+                    <span>+ Poly Zone</span>
+                  </button>
+
+                  {zoneEditorMode === "DRAW_POLY" && drawingPolyPoints.length >= 3 && (
+                    <button
+                      onClick={() => handleCreatePolygonRegion(drawingPolyPoints)}
+                      className="px-2.5 py-1 rounded text-xs flex items-center gap-1 bg-emerald-600 hover:bg-emerald-500 text-white font-medium shadow animate-pulse"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Finish Poly ({drawingPolyPoints.length} pts)</span>
+                    </button>
+                  )}
+
+                  {zoneEditorMode !== "IDLE" && (
+                    <button
+                      onClick={() => {
+                        setZoneEditorMode("IDLE");
+                        setDrawingRect(null);
+                        setDrawingPolyPoints([]);
+                        setSelectedRegionId(null);
+                      }}
+                      className="px-2 py-1 rounded text-xs text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+                      title="Exit drawing/edit mode"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 text-xs text-slate-400 font-mono bg-slate-950 px-2.5 py-1 rounded border border-slate-800">
+                  <span>
+                    {currentTimeSec.toFixed(2)}s / {(selectedRun?.duration_sec || 10.0).toFixed(2)}s
+                  </span>
+                </div>
               </div>
             </div>
 
             {/* Video Canvas Simulation & Native Video Player Screen */}
-            <div className="relative aspect-video bg-slate-950 flex items-center justify-center overflow-hidden group select-none">
+            <div
+              className="relative aspect-video bg-slate-950 flex items-center justify-center overflow-hidden group select-none"
+              onMouseDown={(e) => {
+                const pt = clientToVideoCoords(e.clientX, e.clientY);
+                if (!pt) return;
+                if (zoneEditorMode === "DRAW_RECT") {
+                  setDrawingRect({ startX: pt[0], startY: pt[1], currentX: pt[0], currentY: pt[1] });
+                } else if (zoneEditorMode === "DRAW_POLY") {
+                  setDrawingPolyPoints((prev) => [...prev, pt]);
+                }
+              }}
+              onMouseMove={(e) => {
+                const pt = clientToVideoCoords(e.clientX, e.clientY);
+                if (!pt) return;
+                if (drawingRect) {
+                  setDrawingRect((prev) => (prev ? { ...prev, currentX: pt[0], currentY: pt[1] } : null));
+                } else if (dragState) {
+                  const dx = pt[0] - dragState.startVidX;
+                  const dy = pt[1] - dragState.startVidY;
+                  const reg = regions.find((r) => r.region_id === dragState.regionId);
+                  if (!reg) return;
+
+                  if (dragState.mode === "MOVE_ALL") {
+                    if (reg.shape_type === "RECTANGLE") {
+                      const init = dragState.initialCoords;
+                      const newCoords = [
+                        [init[0][0] + dx, init[0][1] + dy],
+                        [init[1][0] + dx, init[1][1] + dy],
+                      ];
+                      setRegions((prev) =>
+                        prev.map((r) => (r.region_id === dragState.regionId ? { ...r, coordinates: newCoords } : r))
+                      );
+                    } else {
+                      const init = dragState.initialCoords;
+                      const newCoords = init.map((p) => [p[0] + dx, p[1] + dy]);
+                      setRegions((prev) =>
+                        prev.map((r) => (r.region_id === dragState.regionId ? { ...r, coordinates: newCoords } : r))
+                      );
+                    }
+                  } else if (dragState.mode === "HANDLE_NW") {
+                    const init = dragState.initialCoords;
+                    const newCoords = [
+                      [pt[0], pt[1]],
+                      [init[1][0], init[1][1]],
+                    ];
+                    setRegions((prev) =>
+                      prev.map((r) => (r.region_id === dragState.regionId ? { ...r, coordinates: newCoords } : r))
+                    );
+                  } else if (dragState.mode === "HANDLE_NE") {
+                    const init = dragState.initialCoords;
+                    const newCoords = [
+                      [init[0][0], pt[1]],
+                      [pt[0], init[1][1]],
+                    ];
+                    setRegions((prev) =>
+                      prev.map((r) => (r.region_id === dragState.regionId ? { ...r, coordinates: newCoords } : r))
+                    );
+                  } else if (dragState.mode === "HANDLE_SW") {
+                    const init = dragState.initialCoords;
+                    const newCoords = [
+                      [pt[0], init[0][1]],
+                      [init[1][0], pt[1]],
+                    ];
+                    setRegions((prev) =>
+                      prev.map((r) => (r.region_id === dragState.regionId ? { ...r, coordinates: newCoords } : r))
+                    );
+                  } else if (dragState.mode === "HANDLE_SE") {
+                    const init = dragState.initialCoords;
+                    const newCoords = [
+                      [init[0][0], init[0][1]],
+                      [pt[0], pt[1]],
+                    ];
+                    setRegions((prev) =>
+                      prev.map((r) => (r.region_id === dragState.regionId ? { ...r, coordinates: newCoords } : r))
+                    );
+                  } else if (dragState.mode === "VERTEX" && dragState.vertexIdx !== undefined) {
+                    const init = dragState.initialCoords;
+                    const newCoords = init.map((p, i) => (i === dragState.vertexIdx ? [pt[0], pt[1]] : p));
+                    setRegions((prev) =>
+                      prev.map((r) => (r.region_id === dragState.regionId ? { ...r, coordinates: newCoords } : r))
+                    );
+                  }
+                }
+              }}
+              onMouseUp={async () => {
+                if (drawingRect) {
+                  await handleCreateRectangleRegion(
+                    drawingRect.startX,
+                    drawingRect.startY,
+                    drawingRect.currentX,
+                    drawingRect.currentY
+                  );
+                } else if (dragState) {
+                  const reg = regions.find((r) => r.region_id === dragState.regionId);
+                  if (reg) {
+                    await handleUpdateRegionGeometry(reg.region_id, reg.coordinates);
+                  }
+                  setDragState(null);
+                }
+              }}
+            >
               {/* Native Video Element if video stream is available */}
               <video
                 ref={videoRef}
                 key={selectedRun?.video_id}
                 src={`/api/v1/video/stream/${selectedRun?.video_id}`}
-                className={`absolute inset-0 w-full h-full object-contain ${
-                  hasVideoError ? "opacity-0 pointer-events-none" : "opacity-100"
+                className={`absolute inset-0 w-full h-full object-contain pointer-events-none ${
+                  hasVideoError ? "opacity-0" : "opacity-100"
                 }`}
                 muted
                 playsInline
@@ -733,32 +1137,293 @@ export default function VideoLabPage() {
                   const currentVideoMeta = videos.find((v) => v.video_id === selectedRun?.video_id);
                   const vidW = currentVideoMeta?.width || actualVideoWidth || selectedSession?.width || 1920;
                   const vidH = currentVideoMeta?.height || actualVideoHeight || selectedSession?.height || 1080;
-                  const leftPct = (reg.coordinates[0][0] / vidW) * 100;
-                  const topPct = (reg.coordinates[0][1] / vidH) * 100;
-                  const widthPct = ((reg.coordinates[1][0] - reg.coordinates[0][0]) / vidW) * 100;
-                  const heightPct = ((reg.coordinates[1][1] - reg.coordinates[0][1]) / vidH) * 100;
+                  const isSelected = selectedRegionId === reg.region_id;
 
-                  return (
-                    <div
-                      key={reg.region_id}
-                      className="absolute border-2 border-dashed rounded-lg bg-indigo-500/10 pointer-events-none transition-all duration-300 z-10"
-                      style={{
-                        left: `${leftPct}%`,
-                        top: `${topPct}%`,
-                        width: `${widthPct}%`,
-                        height: `${heightPct}%`,
-                        borderColor: reg.color || "#3b82f6",
-                      }}
-                    >
+                  if (reg.shape_type === "RECTANGLE" && reg.coordinates.length === 2 && Array.isArray(reg.coordinates[0])) {
+                    const xMin = Math.min(reg.coordinates[0][0], reg.coordinates[1][0]);
+                    const yMin = Math.min(reg.coordinates[0][1], reg.coordinates[1][1]);
+                    const xMax = Math.max(reg.coordinates[0][0], reg.coordinates[1][0]);
+                    const yMax = Math.max(reg.coordinates[0][1], reg.coordinates[1][1]);
+
+                    const leftPct = (xMin / vidW) * 100;
+                    const topPct = (yMin / vidH) * 100;
+                    const widthPct = ((xMax - xMin) / vidW) * 100;
+                    const heightPct = ((yMax - yMin) / vidH) * 100;
+
+                    return (
                       <div
-                        className="absolute top-1 left-1 text-[10px] font-medium px-1.5 py-0.5 rounded text-white shadow-md backdrop-blur-md"
-                        style={{ backgroundColor: reg.color || "#3b82f6" }}
+                        key={reg.region_id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedRegionId(reg.region_id);
+                          setZoneEditorMode("EDIT_ZONE");
+                          setActiveTab("regions");
+                        }}
+                        onMouseDown={(e) => {
+                          if (isSelected) {
+                            e.stopPropagation();
+                            const pt = clientToVideoCoords(e.clientX, e.clientY);
+                            if (pt) {
+                              setDragState({
+                                regionId: reg.region_id,
+                                mode: "MOVE_ALL",
+                                startVidX: pt[0],
+                                startVidY: pt[1],
+                                initialCoords: reg.coordinates,
+                              });
+                            }
+                          }
+                        }}
+                        className={`absolute rounded-lg transition-all duration-75 z-10 ${
+                          isSelected
+                            ? "border-2 border-dashed bg-blue-500/20 ring-2 ring-blue-400/50 cursor-move"
+                            : "border-2 border-dashed bg-blue-500/10 hover:bg-blue-500/20 cursor-pointer"
+                        }`}
+                        style={{
+                          left: `${leftPct}%`,
+                          top: `${topPct}%`,
+                          width: `${widthPct}%`,
+                          height: `${heightPct}%`,
+                          borderColor: reg.color || "#3b82f6",
+                        }}
                       >
-                        {reg.name}
+                        <div
+                          className="absolute top-1 left-1 text-[10px] font-semibold px-1.5 py-0.5 rounded text-white shadow-md backdrop-blur-md flex items-center gap-1"
+                          style={{ backgroundColor: reg.color || "#3b82f6" }}
+                        >
+                          <Square className="w-2.5 h-2.5" />
+                          <span>{reg.name}</span>
+                        </div>
+
+                        {/* Interactive Resize Handles when Selected */}
+                        {isSelected && (
+                          <>
+                            {/* NW Handle */}
+                            <div
+                              onMouseDown={(e) => {
+                                e.stopPropagation();
+                                const pt = clientToVideoCoords(e.clientX, e.clientY);
+                                if (pt) {
+                                  setDragState({
+                                    regionId: reg.region_id,
+                                    mode: "HANDLE_NW",
+                                    startVidX: pt[0],
+                                    startVidY: pt[1],
+                                    initialCoords: reg.coordinates,
+                                  });
+                                }
+                              }}
+                              className="absolute -top-1.5 -left-1.5 w-3.5 h-3.5 bg-white border-2 border-blue-600 rounded-full cursor-nwse-resize shadow-md hover:scale-125 transition-transform"
+                            />
+                            {/* NE Handle */}
+                            <div
+                              onMouseDown={(e) => {
+                                e.stopPropagation();
+                                const pt = clientToVideoCoords(e.clientX, e.clientY);
+                                if (pt) {
+                                  setDragState({
+                                    regionId: reg.region_id,
+                                    mode: "HANDLE_NE",
+                                    startVidX: pt[0],
+                                    startVidY: pt[1],
+                                    initialCoords: reg.coordinates,
+                                  });
+                                }
+                              }}
+                              className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 bg-white border-2 border-blue-600 rounded-full cursor-nesw-resize shadow-md hover:scale-125 transition-transform"
+                            />
+                            {/* SW Handle */}
+                            <div
+                              onMouseDown={(e) => {
+                                e.stopPropagation();
+                                const pt = clientToVideoCoords(e.clientX, e.clientY);
+                                if (pt) {
+                                  setDragState({
+                                    regionId: reg.region_id,
+                                    mode: "HANDLE_SW",
+                                    startVidX: pt[0],
+                                    startVidY: pt[1],
+                                    initialCoords: reg.coordinates,
+                                  });
+                                }
+                              }}
+                              className="absolute -bottom-1.5 -left-1.5 w-3.5 h-3.5 bg-white border-2 border-blue-600 rounded-full cursor-nesw-resize shadow-md hover:scale-125 transition-transform"
+                            />
+                            {/* SE Handle */}
+                            <div
+                              onMouseDown={(e) => {
+                                e.stopPropagation();
+                                const pt = clientToVideoCoords(e.clientX, e.clientY);
+                                if (pt) {
+                                  setDragState({
+                                    regionId: reg.region_id,
+                                    mode: "HANDLE_SE",
+                                    startVidX: pt[0],
+                                    startVidY: pt[1],
+                                    initialCoords: reg.coordinates,
+                                  });
+                                }
+                              }}
+                              className="absolute -bottom-1.5 -right-1.5 w-3.5 h-3.5 bg-white border-2 border-blue-600 rounded-full cursor-nwse-resize shadow-md hover:scale-125 transition-transform"
+                            />
+                          </>
+                        )}
                       </div>
-                    </div>
-                  );
+                    );
+                  }
+
+                  // Render Polygon Zone via SVG
+                  if (reg.shape_type === "POLYGON" && reg.coordinates.length >= 3) {
+                    const pointsStr = reg.coordinates
+                      .map((pt) => `${(pt[0] / vidW) * 100}%,${(pt[1] / vidH) * 100}%`)
+                      .join(" ");
+
+                    // Calculate centroid for label
+                    const cx = reg.coordinates.reduce((sum, p) => sum + p[0], 0) / reg.coordinates.length;
+                    const cy = reg.coordinates.reduce((sum, p) => sum + p[1], 0) / reg.coordinates.length;
+
+                    return (
+                      <div key={reg.region_id} className="absolute inset-0 pointer-events-none z-10">
+                        <svg className="absolute inset-0 w-full h-full pointer-events-auto">
+                          <polygon
+                            points={pointsStr}
+                            fill={`${reg.color || "#8b5cf6"}20`}
+                            stroke={reg.color || "#8b5cf6"}
+                            strokeWidth={isSelected ? "2.5" : "1.5"}
+                            strokeDasharray="4 2"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedRegionId(reg.region_id);
+                              setZoneEditorMode("EDIT_ZONE");
+                              setActiveTab("regions");
+                            }}
+                            onMouseDown={(e) => {
+                              if (isSelected) {
+                                e.stopPropagation();
+                                const pt = clientToVideoCoords(e.clientX, e.clientY);
+                                if (pt) {
+                                  setDragState({
+                                    regionId: reg.region_id,
+                                    mode: "MOVE_ALL",
+                                    startVidX: pt[0],
+                                    startVidY: pt[1],
+                                    initialCoords: reg.coordinates,
+                                  });
+                                }
+                              }
+                            }}
+                            className={isSelected ? "cursor-move" : "cursor-pointer"}
+                          />
+
+                          {/* Render draggable vertex handles when selected */}
+                          {isSelected &&
+                            reg.coordinates.map((pt, idx) => (
+                              <circle
+                                key={idx}
+                                cx={`${(pt[0] / vidW) * 100}%`}
+                                cy={`${(pt[1] / vidH) * 100}%`}
+                                r="5"
+                                fill="#ffffff"
+                                stroke={reg.color || "#8b5cf6"}
+                                strokeWidth="2"
+                                className="cursor-pointer hover:r-7 transition-all"
+                                onMouseDown={(e) => {
+                                  e.stopPropagation();
+                                  const cPt = clientToVideoCoords(e.clientX, e.clientY);
+                                  if (cPt) {
+                                    setDragState({
+                                      regionId: reg.region_id,
+                                      mode: "VERTEX",
+                                      vertexIdx: idx,
+                                      startVidX: cPt[0],
+                                      startVidY: cPt[1],
+                                      initialCoords: reg.coordinates,
+                                    });
+                                  }
+                                }}
+                              />
+                            ))}
+                        </svg>
+
+                        {/* Centroid Name Label */}
+                        <div
+                          className="absolute text-[10px] font-semibold px-1.5 py-0.5 rounded text-white shadow-md backdrop-blur-md pointer-events-none transform -translate-x-1/2 -translate-y-1/2 flex items-center gap-1"
+                          style={{
+                            left: `${(cx / vidW) * 100}%`,
+                            top: `${(cy / vidH) * 100}%`,
+                            backgroundColor: reg.color || "#8b5cf6",
+                          }}
+                        >
+                          <Hexagon className="w-2.5 h-2.5" />
+                          <span>{reg.name}</span>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  return null;
                 })}
+
+              {/* Active Drawing Preview (Rectangle) */}
+              {drawingRect && (
+                <div
+                  className="absolute border-2 border-dashed border-sky-400 bg-sky-500/25 pointer-events-none z-30 animate-pulse rounded"
+                  style={(() => {
+                    const currentVideoMeta = videos.find((v) => v.video_id === selectedRun?.video_id);
+                    const vidW = currentVideoMeta?.width || actualVideoWidth || selectedSession?.width || 1920;
+                    const vidH = currentVideoMeta?.height || actualVideoHeight || selectedSession?.height || 1080;
+                    const xMin = Math.min(drawingRect.startX, drawingRect.currentX);
+                    const yMin = Math.min(drawingRect.startY, drawingRect.currentY);
+                    const xMax = Math.max(drawingRect.startX, drawingRect.currentX);
+                    const yMax = Math.max(drawingRect.startY, drawingRect.currentY);
+                    return {
+                      left: `${(xMin / vidW) * 100}%`,
+                      top: `${(yMin / vidH) * 100}%`,
+                      width: `${((xMax - xMin) / vidW) * 100}%`,
+                      height: `${((yMax - yMin) / vidH) * 100}%`,
+                    };
+                  })()}
+                >
+                  <div className="absolute top-1 left-1 text-[10px] font-mono bg-sky-600 text-white px-1.5 py-0.5 rounded shadow">
+                    Drawing Rectangle...
+                  </div>
+                </div>
+              )}
+
+              {/* Active Drawing Preview (Polygon) */}
+              {zoneEditorMode === "DRAW_POLY" && drawingPolyPoints.length > 0 && (
+                <svg className="absolute inset-0 w-full h-full pointer-events-none z-30">
+                  {(() => {
+                    const currentVideoMeta = videos.find((v) => v.video_id === selectedRun?.video_id);
+                    const vidW = currentVideoMeta?.width || actualVideoWidth || selectedSession?.width || 1920;
+                    const vidH = currentVideoMeta?.height || actualVideoHeight || selectedSession?.height || 1080;
+                    return (
+                      <>
+                        <polyline
+                          fill="rgba(168, 85, 247, 0.2)"
+                          stroke="#a855f7"
+                          strokeWidth="2"
+                          strokeDasharray="4 2"
+                          points={drawingPolyPoints
+                            .map((p) => `${(p[0] / vidW) * 100}%,${(p[1] / vidH) * 100}%`)
+                            .join(" ")}
+                        />
+                        {drawingPolyPoints.map((p, i) => (
+                          <circle
+                            key={i}
+                            cx={`${(p[0] / vidW) * 100}%`}
+                            cy={`${(p[1] / vidH) * 100}%`}
+                            r="4"
+                            fill="#ffffff"
+                            stroke="#a855f7"
+                            strokeWidth="2"
+                          />
+                        ))}
+                      </>
+                    );
+                  })()}
+                </svg>
+              )}
 
               {/* Render Active Tracks & Bounding Boxes */}
               {activeTracksAtCurrentTime.map((track) => {
@@ -1218,35 +1883,260 @@ export default function VideoLabPage() {
 
           {/* Tab 3: Regions of Interest (ROI) */}
           {activeTab === "regions" && (
-            <div className="bg-slate-900/70 border border-slate-800 rounded-b-xl p-4 space-y-3 max-h-[600px] overflow-y-auto">
-              <div className="flex items-center justify-between text-xs text-slate-400 pb-2 border-b border-slate-800">
-                <span>Configured Spatial ROIs ({regions.length})</span>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="text-sky-400 hover:text-sky-300 text-xs p-0 h-auto"
-                  onClick={() => setIsRegionModalOpen(true)}
-                >
-                  + Add Zone
-                </Button>
+            <div className="bg-slate-900/70 border border-slate-800 rounded-b-xl p-4 space-y-4 max-h-[600px] overflow-y-auto">
+              {/* User Education Banner */}
+              <div className="p-3 bg-blue-950/30 border border-blue-800/40 rounded-lg flex items-start gap-2.5 text-xs text-blue-200/90 leading-relaxed">
+                <Info className="w-4 h-4 text-blue-400 flex-shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-semibold text-blue-300">Spatial Zones & Temporal Analysis: </span>
+                  Zones define areas of interest in the video. VisionForge uses tracked objects and zone geometry to detect entries, exits, real-time occupancy, and dwell time.
+                </div>
               </div>
 
-              {regions.map((reg) => (
-                <div key={reg.region_id} className="p-3 rounded-lg bg-slate-950 border border-slate-800 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: reg.color || "#3b82f6" }} />
-                      <span className="text-xs font-semibold text-slate-200">{reg.name}</span>
-                    </div>
-                    <span className="text-[10px] font-mono text-slate-500">{reg.shape_type}</span>
-                  </div>
+              {/* Action Header */}
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-800">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-slate-200">Configured Zones ({regions.length})</span>
+                  {selectedRegionId && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-600/30 text-blue-300 border border-blue-500/40 font-mono">
+                      Editing Zone Active
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className={`text-xs h-7 px-2.5 border-slate-700 ${
+                      zoneEditorMode === "DRAW_RECT" ? "bg-blue-600 text-white" : "bg-slate-900 text-slate-200 hover:bg-slate-800"
+                    }`}
+                    onClick={() => {
+                      setZoneEditorMode("DRAW_RECT");
+                      setSelectedRegionId(null);
+                    }}
+                  >
+                    <Square className="w-3.5 h-3.5 mr-1 text-blue-400" />
+                    + Draw Rect
+                  </Button>
 
-                  <div className="text-[11px] font-mono text-slate-400 bg-slate-900/80 p-2 rounded border border-slate-800">
-                    <div>Coordinates: [{reg.coordinates.map((c) => `[${c.join(",")}]`).join(", ")}]</div>
-                    <div>Reference: {reg.coordinate_system} Coordinate Space</div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className={`text-xs h-7 px-2.5 border-slate-700 ${
+                      zoneEditorMode === "DRAW_POLY" ? "bg-purple-600 text-white" : "bg-slate-900 text-slate-200 hover:bg-slate-800"
+                    }`}
+                    onClick={() => {
+                      setZoneEditorMode("DRAW_POLY");
+                      setDrawingPolyPoints([]);
+                      setSelectedRegionId(null);
+                    }}
+                  >
+                    <Hexagon className="w-3.5 h-3.5 mr-1 text-purple-400" />
+                    + Draw Poly
+                  </Button>
+                </div>
+              </div>
+
+              {/* Empty State */}
+              {regions.length === 0 && (
+                <div className="text-center py-8 px-4 bg-slate-950/80 rounded-xl border border-slate-800/80 space-y-3">
+                  <div className="w-10 h-10 rounded-full bg-slate-900 flex items-center justify-center mx-auto text-slate-500 border border-slate-800">
+                    <Crosshair className="w-5 h-5 text-slate-400" />
+                  </div>
+                  <div className="space-y-1">
+                    <h4 className="text-xs font-semibold text-slate-200">No monitoring zones defined.</h4>
+                    <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                      Draw a region on the video canvas to analyze object entry, exit, occupancy, and dwell time.
+                    </p>
+                  </div>
+                  <div className="flex justify-center gap-2 pt-1">
+                    <Button
+                      size="sm"
+                      className="bg-blue-600 hover:bg-blue-500 text-white text-xs"
+                      onClick={() => setZoneEditorMode("DRAW_RECT")}
+                    >
+                      <Square className="w-3.5 h-3.5 mr-1" />
+                      Create Rectangle Zone
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="bg-purple-600 hover:bg-purple-500 text-white text-xs"
+                      onClick={() => setZoneEditorMode("DRAW_POLY")}
+                    >
+                      <Hexagon className="w-3.5 h-3.5 mr-1" />
+                      Create Polygon Zone
+                    </Button>
                   </div>
                 </div>
-              ))}
+              )}
+
+              {/* Zone List */}
+              {regions.map((reg) => {
+                const isSelected = selectedRegionId === reg.region_id;
+                const isRenaming = renamingRegionId === reg.region_id;
+
+                // Calculate real active occupants inside this zone at currentTimeSec
+                const activeOccupants = activeTracksAtCurrentTime.filter((track) => {
+                  const point = track.trajectory.reduce((prev, curr) =>
+                    Math.abs(curr.timestamp_sec - currentTimeSec) < Math.abs(prev.timestamp_sec - currentTimeSec)
+                      ? curr
+                      : prev,
+                    track.trajectory[0]
+                  );
+                  if (!point || Math.abs(point.timestamp_sec - currentTimeSec) > 0.35) return false;
+                  return isPointInRegion([point.x_center_px, point.y_center_px], reg);
+                });
+
+                // Calculate real events for this zone
+                const zoneEvents = events.filter((e) => e.event_params?.region_id === reg.region_id);
+                const dwellEvents = zoneEvents.filter((e) => e.event_type === "OBJECT_DWELLED");
+                const avgDwell =
+                  dwellEvents.length > 0
+                    ? dwellEvents.reduce((acc, e) => acc + (e.duration_sec || 0), 0) / dwellEvents.length
+                    : 0;
+
+                return (
+                  <div
+                    key={reg.region_id}
+                    onClick={() => {
+                      setSelectedRegionId(reg.region_id);
+                      setZoneEditorMode("EDIT_ZONE");
+                    }}
+                    className={`p-3 rounded-lg border transition-all cursor-pointer space-y-2.5 ${
+                      isSelected
+                        ? "bg-blue-950/30 border-blue-500 ring-1 ring-blue-500/40"
+                        : "bg-slate-950 border-slate-800/80 hover:border-slate-700"
+                    }`}
+                  >
+                    {/* Header: Name and Type */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <div
+                          className="w-3 h-3 rounded-full flex-shrink-0 shadow"
+                          style={{ backgroundColor: reg.color || "#3b82f6" }}
+                        />
+                        {isRenaming ? (
+                          <div className="flex items-center gap-1 flex-1">
+                            <input
+                              type="text"
+                              value={renameInputValue}
+                              onChange={(e) => setRenameInputValue(e.target.value)}
+                              className="px-2 py-0.5 bg-slate-900 border border-slate-700 rounded text-xs text-white focus:outline-none focus:border-blue-500 flex-1"
+                              autoFocus
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRenameRegion(reg.region_id, renameInputValue);
+                              }}
+                              className="p-1 text-emerald-400 hover:text-emerald-300"
+                              title="Save name"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setRenamingRegionId(null);
+                              }}
+                              className="p-1 text-slate-400 hover:text-slate-300"
+                              title="Cancel"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                            <span className="text-xs font-semibold text-slate-100 truncate">{reg.name}</span>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setRenamingRegionId(reg.region_id);
+                                setRenameInputValue(reg.name);
+                              }}
+                              className="text-slate-500 hover:text-slate-300 p-0.5"
+                              title="Rename zone"
+                            >
+                              <Edit2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-900 text-slate-400 border border-slate-800">
+                        {reg.shape_type}
+                      </span>
+                    </div>
+
+                    {/* Measurable Live Metrics Grid */}
+                    <div className="grid grid-cols-3 gap-2 text-[11px] font-mono text-slate-400 bg-slate-900/60 p-2 rounded border border-slate-800/60">
+                      <div>
+                        <span className="text-slate-500">Occupancy Now: </span>
+                        <span className={activeOccupants.length > 0 ? "text-emerald-400 font-bold" : "text-slate-400"}>
+                          {activeOccupants.length} obj
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500">Zone Events: </span>
+                        <span className="text-sky-400 font-bold">{zoneEvents.length}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500">Avg Dwell: </span>
+                        <span className="text-amber-400">{avgDwell > 0 ? `${avgDwell.toFixed(1)}s` : "0.0s"}</span>
+                      </div>
+                    </div>
+
+                    {/* Coordinates Information */}
+                    <div className="text-[10px] font-mono text-slate-500 truncate">
+                      Coords: {reg.shape_type === "RECTANGLE" ? `[${reg.coordinates.map((c) => `[${c.map((n) => n.toFixed(0)).join(",")}]`).join(", ")}]` : `${reg.coordinates.length} vertices`} ({reg.coordinate_system})
+                    </div>
+
+                    {/* Action Toolbar */}
+                    <div className="pt-2 border-t border-slate-800/60 flex items-center justify-between text-xs">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedRegionId(reg.region_id);
+                          setZoneEditorMode("EDIT_ZONE");
+                        }}
+                        className={`text-[11px] flex items-center gap-1 font-medium ${
+                          isSelected ? "text-blue-400" : "text-slate-400 hover:text-blue-300"
+                        }`}
+                      >
+                        <MousePointer className="w-3 h-3" />
+                        {isSelected ? "Selected (Drag to Move)" : "Select / Edit"}
+                      </button>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDuplicateRegion(reg.region_id);
+                          }}
+                          className="text-slate-400 hover:text-sky-300 text-[11px] flex items-center gap-1"
+                          title="Duplicate zone with offset"
+                        >
+                          <Copy className="w-3 h-3" />
+                          Duplicate
+                        </button>
+
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteRegion(reg.region_id);
+                          }}
+                          className="text-red-400 hover:text-red-300 text-[11px] flex items-center gap-1"
+                          title="Delete zone"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
 
@@ -1288,48 +2178,6 @@ export default function VideoLabPage() {
         </div>
       </div>
 
-      {/* Define ROI Modal */}
-      {isRegionModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-xl max-w-md w-full p-5 space-y-4 shadow-2xl">
-            <h3 className="text-base font-semibold text-slate-100 flex items-center gap-2">
-              <MapPin className="w-5 h-5 text-emerald-400" />
-              Define Region of Interest (ROI)
-            </h3>
-
-            <div className="space-y-3 text-xs">
-              <div>
-                <label className="block text-slate-400 mb-1">Region Name</label>
-                <input
-                  type="text"
-                  value={newRegionName}
-                  onChange={(e) => setNewRegionName(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded text-slate-200"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-400 mb-1">Stroke Color</label>
-                <input
-                  type="color"
-                  value={newRegionColor}
-                  onChange={(e) => setNewRegionColor(e.target.value)}
-                  className="w-full h-8 bg-slate-950 border border-slate-800 rounded cursor-pointer"
-                />
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
-              <Button variant="ghost" size="sm" onClick={() => setIsRegionModalOpen(false)}>
-                Cancel
-              </Button>
-              <Button size="sm" className="bg-emerald-600 hover:bg-emerald-500 text-white" onClick={handleCreateRegion}>
-                Save Region
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Video Comparison Modal */}
       {isCompareModalOpen && compareResult && (

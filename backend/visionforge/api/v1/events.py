@@ -40,6 +40,17 @@ class CreateRegionRequest(BaseModel):
     color: str = Field(default="#3b82f6", description="Color stroke hex code")
 
 
+class UpdateRegionRequest(BaseModel):
+    name: str | None = Field(default=None, description="Updated human-readable region name")
+    coordinates: list[list[float]] | None = Field(
+        default=None, description="Updated vertices coordinates"
+    )
+    shape_type: RegionShape | None = Field(
+        default=None, description="Updated shape geometry format"
+    )
+    color: str | None = Field(default=None, description="Updated color stroke hex code")
+
+
 class GenerateEventsRequest(BaseModel):
     run_id: str = Field(description="Target VideoInferenceRun ID")
     config: EventRuleConfig | None = Field(
@@ -77,6 +88,58 @@ def list_regions(
     """Retrieve list of defined regions of interest."""
     service = get_temporal_event_service()
     return service.list_regions(video_id=video_id)
+
+
+@router.get(
+    "/regions/{region_id}",
+    response_model=RegionOfInterest,
+    summary="Get Region of Interest detail",
+)
+def get_region(region_id: str) -> RegionOfInterest:
+    """Get single region of interest by ID."""
+    service = get_temporal_event_service()
+    try:
+        return service.get_region(region_id)
+    except RegionNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.put(
+    "/regions/{region_id}",
+    response_model=RegionOfInterest,
+    summary="Update Region of Interest",
+)
+def update_region(region_id: str, payload: UpdateRegionRequest) -> RegionOfInterest:
+    """Update geometry, name, or styling of an existing region."""
+    service = get_temporal_event_service()
+    try:
+        return service.update_region(
+            region_id=region_id,
+            name=payload.name,
+            coordinates=payload.coordinates,
+            shape_type=payload.shape_type,
+            color=payload.color,
+        )
+    except RegionNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.post(
+    "/regions/{region_id}/duplicate",
+    response_model=RegionOfInterest,
+    status_code=status.HTTP_201_CREATED,
+    summary="Duplicate Region of Interest",
+)
+def duplicate_region(
+    region_id: str,
+    offset_px: float = Query(default=30.0, description="Pixel offset applied to duplicated region"),
+) -> RegionOfInterest:
+    """Duplicate an existing region with a distinct ID, name, and spatial offset."""
+    service = get_temporal_event_service()
+    try:
+        return service.duplicate_region(region_id=region_id, offset_px=offset_px)
+    except RegionNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.delete(

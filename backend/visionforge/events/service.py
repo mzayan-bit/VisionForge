@@ -60,6 +60,7 @@ class TemporalEventService:
         self._regions_file = self._storage_dir / "regions.json"
         self._events_file = self._storage_dir / "events.json"
 
+        self._is_custom_storage = storage_dir is not None
         self._regions: dict[str, RegionOfInterest] = {}
         self._events: dict[str, TemporalEvent] = {}
         self.load_from_disk()
@@ -93,6 +94,64 @@ class TemporalEventService:
         )
         return region
 
+    def get_region(self, region_id: str) -> RegionOfInterest:
+        """Retrieve a specific Region of Interest."""
+        if region_id not in self._regions:
+            raise RegionNotFoundError(region_id)
+        return self._regions[region_id]
+
+    def update_region(
+        self,
+        region_id: str,
+        name: str | None = None,
+        coordinates: list[list[float]] | None = None,
+        shape_type: RegionShape | None = None,
+        color: str | None = None,
+    ) -> RegionOfInterest:
+        """Update properties or geometry of an existing Region of Interest."""
+        if region_id not in self._regions:
+            raise RegionNotFoundError(region_id)
+        region = self._regions[region_id]
+
+        if name is not None:
+            region.name = name.strip()
+        if coordinates is not None:
+            region.coordinates = coordinates
+        if shape_type is not None:
+            region.shape_type = shape_type
+        if color is not None:
+            region.color = color
+
+        self.save_to_disk()
+        logger.info("Updated Region of Interest '%s' (%s)", region_id, region.name)
+        return region
+
+    def duplicate_region(self, region_id: str, offset_px: float = 30.0) -> RegionOfInterest:
+        """Duplicate a region with a distinct ID, name, and coordinate offset."""
+        source = self.get_region(region_id)
+        new_coords: list[list[float]] = []
+
+        if source.shape_type == RegionShape.RECTANGLE:
+            if len(source.coordinates) == 2 and isinstance(source.coordinates[0], list):
+                new_coords = [
+                    [source.coordinates[0][0] + offset_px, source.coordinates[0][1] + offset_px],
+                    [source.coordinates[1][0] + offset_px, source.coordinates[1][1] + offset_px],
+                ]
+            else:
+                new_coords = [[pt[0] + offset_px, pt[1] + offset_px] for pt in source.coordinates]
+        else:
+            new_coords = [[pt[0] + offset_px, pt[1] + offset_px] for pt in source.coordinates]
+
+        new_name = f"{source.name} (Copy)"
+        return self.create_region(
+            video_id=source.video_id,
+            name=new_name,
+            coordinates=new_coords,
+            shape_type=source.shape_type,
+            coordinate_system=source.coordinate_system,
+            color=source.color,
+        )
+
     def list_regions(self, video_id: str | None = None) -> list[RegionOfInterest]:
         """List all defined regions, optionally filtered by video ID."""
         regs = list(self._regions.values())
@@ -119,6 +178,9 @@ class TemporalEventService:
 
         detector = TemporalEventDetector(config=config)
         detected = detector.detect_events(run, regions)
+
+        # Clear prior events for this run to avoid stale duplicate events
+        self._events = {k: v for k, v in self._events.items() if v.run_id != run_id}
 
         # Store generated events
         for evt in detected:
@@ -311,16 +373,20 @@ class TemporalEventService:
         )
 
     def load_from_disk(self) -> None:
-        video_svc = get_video_intelligence_service()
-        valid_video_ids = set(video_svc._videos.keys())
-        valid_run_ids = set(video_svc._runs.keys())
+        if self._is_custom_storage:
+            valid_video_ids: set[str] = set()
+            valid_run_ids: set[str] = set()
+        else:
+            video_svc = get_video_intelligence_service()
+            valid_video_ids = set(video_svc._videos.keys())
+            valid_run_ids = set(video_svc._runs.keys())
 
         if self._regions_file.is_file():
             try:
                 raw_regs = json.loads(self._regions_file.read_text(encoding="utf-8"))
                 for item in raw_regs.get("regions", []):
                     reg = RegionOfInterest(**item)
-                    if reg.video_id in valid_video_ids:
+                    if not valid_video_ids or reg.video_id in valid_video_ids:
                         self._regions[reg.region_id] = reg
             except Exception as exc:
                 logger.warning("Failed to restore regions from disk: %s", str(exc))
@@ -329,9 +395,9 @@ class TemporalEventService:
             try:
                 raw_evts = json.loads(self._events_file.read_text(encoding="utf-8"))
                 for item in raw_evts.get("events", []):
-                    evt = TemporalEvent(**item)
-                    if evt.run_id in valid_run_ids or evt.video_id in valid_video_ids:
-                        self._events[evt.event_id] = evt
+                    e = TemporalEvent(**item)
+                    if not valid_run_ids or e.run_id in valid_run_ids:
+                        self._events[e.event_id] = e
             except Exception as exc:
                 logger.warning("Failed to restore events from disk: %s", str(exc))
 
