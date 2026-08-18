@@ -203,3 +203,36 @@ def test_video_api_endpoints(tmp_path):
     assert res_export.status_code == 200
     assert "data" in res_export.json()
     assert "run_id,video_id,track_id,class_name,confidence" in res_export.json()["data"]
+
+
+def test_video_isolation_and_ghost_pruning(tmp_path):
+    """Verify that multiple video uploads remain strictly isolated and ghost records are pruned."""
+    svc = VideoIntelligenceService(storage_dir=tmp_path)
+
+    # 1. Upload Video A
+    vid_a = tmp_path / "video_a.mp4"
+    create_real_test_video(vid_a, width=320, height=240, fps=30, frames=10)
+    meta_a = svc.register_video(str(vid_a))
+    run_a = svc.run_video_tracking(meta_a.video_id, model_id="yolo11s.pt")
+
+    # 2. Upload Video B
+    vid_b = tmp_path / "video_b.mp4"
+    create_real_test_video(vid_b, width=320, height=240, fps=30, frames=12)
+    meta_b = svc.register_video(str(vid_b))
+    run_b = svc.run_video_tracking(meta_b.video_id, model_id="yolo11s.pt")
+
+    assert meta_a.video_id != meta_b.video_id
+    assert run_a.run_id != run_b.run_id
+    assert run_a.video_id == meta_a.video_id
+    assert run_b.video_id == meta_b.video_id
+
+    # 3. Reload from disk after deleting Video A physical file
+    vid_a.unlink()
+    svc_reloaded = VideoIntelligenceService(storage_dir=tmp_path)
+    svc_reloaded.load_from_disk()
+
+    # Video A must be pruned since file was unlinked, Video B must remain
+    assert meta_a.video_id not in svc_reloaded._videos
+    assert meta_b.video_id in svc_reloaded._videos
+    assert run_a.run_id not in svc_reloaded._runs
+    assert run_b.run_id in svc_reloaded._runs
