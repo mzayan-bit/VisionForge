@@ -35,9 +35,12 @@ install:
 # ------------------------------------------------------------------------------
 # Local Development Execution
 # ------------------------------------------------------------------------------
+run:
+	@./run.sh
+
 dev:
 	@echo "Starting VisionForge local development servers..."
-	@./scripts/dev.sh
+	@./run.sh
 
 # ------------------------------------------------------------------------------
 # Container Deployment (Docker Compose)
