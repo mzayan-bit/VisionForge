@@ -4,6 +4,7 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from visionforge.video.schemas import (
@@ -94,6 +95,36 @@ def list_videos() -> list[VideoMetadata]:
     """List all registered video assets."""
     service = get_video_intelligence_service()
     return service.list_videos()
+
+
+@router.get(
+    "/stream/{video_id}",
+    summary="Stream raw video asset file",
+)
+def stream_video(video_id: str):
+    """Stream raw video asset file for native browser video playback."""
+    service = get_video_intelligence_service()
+    if video_id not in service._videos:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Video asset '{video_id}' not found.",
+        )
+    meta = service._videos[video_id]
+
+    # 1. Check uploads directory
+    upload_path = service._storage_dir / "uploads" / meta.filename
+    if upload_path.is_file():
+        return FileResponse(str(upload_path), media_type="video/mp4", filename=meta.filename)
+
+    # 2. Check direct storage directory
+    direct_path = service._storage_dir / meta.filename
+    if direct_path.is_file():
+        return FileResponse(str(direct_path), media_type="video/mp4", filename=meta.filename)
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"Physical video file for '{video_id}' not found on server.",
+    )
 
 
 @router.post(

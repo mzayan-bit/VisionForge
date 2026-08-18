@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Activity,
@@ -220,6 +220,8 @@ export default function VideoLabPage() {
   const [selectedEvent, setSelectedEvent] = useState<TemporalEvent | null>(null);
 
   // Playback & Overlay State
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [hasVideoError, setHasVideoError] = useState<boolean>(false);
   const [currentTimeSec, setCurrentTimeSec] = useState<number>(0.0);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1.0);
@@ -389,10 +391,10 @@ export default function VideoLabPage() {
     }
   };
 
-  // Playback timer ticker
+  // Playback timer ticker (Fallback when native video is unavailable or loading)
   useEffect(() => {
     let interval: any = null;
-    if (isPlaying && selectedRun) {
+    if (isPlaying && (hasVideoError || !videoRef.current) && selectedRun) {
       interval = setInterval(() => {
         setCurrentTimeSec((prev) => {
           const next = prev + 0.1 * playbackSpeed;
@@ -407,7 +409,18 @@ export default function VideoLabPage() {
       clearInterval(interval);
     }
     return () => clearInterval(interval);
-  }, [isPlaying, playbackSpeed, selectedRun]);
+  }, [isPlaying, playbackSpeed, selectedRun, hasVideoError]);
+
+  // Sync isPlaying with videoRef
+  useEffect(() => {
+    if (videoRef.current && !hasVideoError) {
+      if (isPlaying) {
+        videoRef.current.play().catch(() => {});
+      } else {
+        videoRef.current.pause();
+      }
+    }
+  }, [isPlaying, hasVideoError]);
 
   // Execute Natural Language Temporal Query
   const handleExecuteQuery = async (e?: React.FormEvent) => {
@@ -415,21 +428,38 @@ export default function VideoLabPage() {
     if (!queryInput.trim() || !selectedRun) return;
 
     setIsQuerying(true);
+    setQueryResult(null);
     try {
       const res = await fetch("/api/v1/query/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          question: queryInput,
+          query_text: queryInput.trim(),
+          question: queryInput.trim(),
           run_id: selectedRun.run_id,
         }),
       });
       if (res.ok) {
         const data = await res.json();
         setQueryResult(data);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setQueryResult({
+          status: "ERROR",
+          explanation: err.detail || "Query evaluation failed.",
+          summary: err.detail || "Query evaluation failed.",
+          evidence: [],
+          evidence_items: [],
+        });
       }
-    } catch (err) {
-      console.error("Query failed:", err);
+    } catch (err: any) {
+      setQueryResult({
+        status: "ERROR",
+        explanation: err.message || "Failed to execute query against Visual Query Layer.",
+        summary: err.message || "Failed to execute query.",
+        evidence: [],
+        evidence_items: [],
+      });
     } finally {
       setIsQuerying(false);
     }
@@ -487,13 +517,30 @@ export default function VideoLabPage() {
 
   // Jump to specific timestamp
   const seekTo = (sec: number) => {
-    setCurrentTimeSec(Math.max(0, Math.min(selectedRun?.duration_sec || 10, sec)));
+    const clamped = Math.max(0, Math.min(selectedRun?.duration_sec || 10, sec));
+    setCurrentTimeSec(parseFloat(clamped.toFixed(2)));
+    if (videoRef.current && !hasVideoError) {
+      videoRef.current.currentTime = clamped;
+    }
+  };
+
+  // Toggle Play / Pause
+  const handleTogglePlay = () => {
+    setIsPlaying((prev) => !prev);
+  };
+
+  // Change Speed
+  const handleSpeedChange = (speed: number) => {
+    setPlaybackSpeed(speed);
+    if (videoRef.current && !hasVideoError) {
+      videoRef.current.playbackRate = speed;
+    }
   };
 
   // Active tracks at current time
   const activeTracksAtCurrentTime =
     selectedRun?.tracks.filter(
-      (t) => currentTimeSec >= t.first_timestamp_sec && currentTimeSec <= t.last_timestamp_sec
+      (t) => currentTimeSec >= t.first_timestamp_sec - 0.2 && currentTimeSec <= t.last_timestamp_sec + 0.2
     ) || [];
 
   return (
@@ -591,48 +638,87 @@ export default function VideoLabPage() {
               </div>
             </div>
 
-            {/* Video Canvas Simulation Screen */}
+            {/* Video Canvas Simulation & Native Video Player Screen */}
             <div className="relative aspect-video bg-slate-950 flex items-center justify-center overflow-hidden group select-none">
-              {/* Canvas Background Simulation */}
-              <div className="absolute inset-0 bg-gradient-to-br from-slate-900/60 via-slate-950 to-slate-900/80" />
-              <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#38bdf8_1px,transparent_1px)] [background-size:24px_24px]" />
+              {/* Native Video Element if video stream is available */}
+              <video
+                ref={videoRef}
+                key={selectedRun?.video_id}
+                src={`/api/v1/video/stream/${selectedRun?.video_id}`}
+                className={`absolute inset-0 w-full h-full object-contain ${
+                  hasVideoError ? "opacity-0 pointer-events-none" : "opacity-100"
+                }`}
+                muted
+                playsInline
+                onError={() => setHasVideoError(true)}
+                onLoadedMetadata={() => setHasVideoError(false)}
+                onTimeUpdate={(e) => {
+                  if (!hasVideoError) {
+                    setCurrentTimeSec(parseFloat(e.currentTarget.currentTime.toFixed(2)));
+                  }
+                }}
+                onEnded={() => setIsPlaying(false)}
+              />
+
+              {/* Canvas Background Simulation (fallback when no video stream or background) */}
+              {hasVideoError && (
+                <>
+                  <div className="absolute inset-0 bg-gradient-to-br from-slate-900/70 via-slate-950 to-slate-900/80" />
+                  <div className="absolute inset-0 opacity-15 bg-[radial-gradient(#38bdf8_1px,transparent_1px)] [background-size:24px_24px]" />
+                </>
+              )}
 
               {/* Render Active ROI Zones */}
               {showRegions &&
-                regions.map((reg) => (
-                  <div
-                    key={reg.region_id}
-                    className="absolute border-2 border-dashed rounded-lg bg-indigo-500/10 pointer-events-none transition-all duration-300"
-                    style={{
-                      left: `${(reg.coordinates[0][0] / 1920) * 100}%`,
-                      top: `${(reg.coordinates[0][1] / 1080) * 100}%`,
-                      width: `${((reg.coordinates[1][0] - reg.coordinates[0][0]) / 1920) * 100}%`,
-                      height: `${((reg.coordinates[1][1] - reg.coordinates[0][1]) / 1080) * 100}%`,
-                      borderColor: reg.color || "#3b82f6",
-                    }}
-                  >
+                regions.map((reg) => {
+                  const vidW = selectedSession?.width || 1920;
+                  const vidH = selectedSession?.height || 1080;
+                  const leftPct = (reg.coordinates[0][0] / vidW) * 100;
+                  const topPct = (reg.coordinates[0][1] / vidH) * 100;
+                  const widthPct = ((reg.coordinates[1][0] - reg.coordinates[0][0]) / vidW) * 100;
+                  const heightPct = ((reg.coordinates[1][1] - reg.coordinates[0][1]) / vidH) * 100;
+
+                  return (
                     <div
-                      className="absolute top-1 left-1 text-[10px] font-medium px-1.5 py-0.5 rounded text-white shadow-md backdrop-blur-md"
-                      style={{ backgroundColor: reg.color || "#3b82f6" }}
+                      key={reg.region_id}
+                      className="absolute border-2 border-dashed rounded-lg bg-indigo-500/10 pointer-events-none transition-all duration-300 z-10"
+                      style={{
+                        left: `${leftPct}%`,
+                        top: `${topPct}%`,
+                        width: `${widthPct}%`,
+                        height: `${heightPct}%`,
+                        borderColor: reg.color || "#3b82f6",
+                      }}
                     >
-                      {reg.name}
+                      <div
+                        className="absolute top-1 left-1 text-[10px] font-medium px-1.5 py-0.5 rounded text-white shadow-md backdrop-blur-md"
+                        style={{ backgroundColor: reg.color || "#3b82f6" }}
+                      >
+                        {reg.name}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
 
               {/* Render Active Tracks & Bounding Boxes */}
               {activeTracksAtCurrentTime.map((track) => {
+                const vidW = selectedSession?.width || 1920;
+                const vidH = selectedSession?.height || 1080;
+
                 // Find closest trajectory point for current time
-                const point =
-                  track.trajectory.find((pt) => Math.abs(pt.timestamp_sec - currentTimeSec) < 0.2) ||
-                  track.trajectory[0];
+                const point = track.trajectory.reduce((prev, curr) =>
+                  Math.abs(curr.timestamp_sec - currentTimeSec) < Math.abs(prev.timestamp_sec - currentTimeSec)
+                    ? curr
+                    : prev,
+                  track.trajectory[0]
+                );
 
                 if (!point) return null;
 
-                const leftPct = (point.bbox[0] / 1920) * 100;
-                const topPct = (point.bbox[1] / 1080) * 100;
-                const widthPct = ((point.bbox[2] - point.bbox[0]) / 1920) * 100;
-                const heightPct = ((point.bbox[3] - point.bbox[1]) / 1080) * 100;
+                const leftPct = (point.bbox[0] / vidW) * 100;
+                const topPct = (point.bbox[1] / vidH) * 100;
+                const widthPct = ((point.bbox[2] - point.bbox[0]) / vidW) * 100;
+                const heightPct = ((point.bbox[3] - point.bbox[1]) / vidH) * 100;
 
                 const isSelected = selectedTrack?.track_id === track.track_id;
 
@@ -640,7 +726,7 @@ export default function VideoLabPage() {
                   <div
                     key={track.track_id}
                     onClick={() => setSelectedTrack(track)}
-                    className={`absolute cursor-pointer transition-all duration-150 ${
+                    className={`absolute cursor-pointer transition-all duration-150 z-20 ${
                       showBoxes ? "border-2 rounded" : ""
                     } ${
                       isSelected
@@ -655,7 +741,7 @@ export default function VideoLabPage() {
                     }}
                   >
                     {showTrackIds && (
-                      <div className="absolute -top-6 left-0 bg-slate-900/90 text-sky-300 text-[11px] font-mono font-bold px-1.5 py-0.5 rounded shadow-lg border border-sky-500/40 flex items-center gap-1">
+                      <div className="absolute -top-6 left-0 bg-slate-900/90 text-sky-300 text-[11px] font-mono font-bold px-1.5 py-0.5 rounded shadow-lg border border-sky-500/40 flex items-center gap-1 whitespace-nowrap">
                         <span>#{track.track_id}</span>
                         <span className="text-slate-400 font-normal">({track.class_name})</span>
                         <span className="text-emerald-400">{(track.avg_confidence * 100).toFixed(0)}%</span>
@@ -667,31 +753,39 @@ export default function VideoLabPage() {
 
               {/* Render Motion Trails / Trajectories */}
               {showTrajectories && selectedTrack && (
-                <svg className="absolute inset-0 w-full h-full pointer-events-none">
+                <svg className="absolute inset-0 w-full h-full pointer-events-none z-15">
                   <polyline
                     fill="none"
                     stroke="#f59e0b"
                     strokeWidth="3"
                     strokeDasharray="4 2"
                     points={selectedTrack.trajectory
-                      .map((pt) => `${(pt.x_center_px / 1920) * 100}%,${(pt.y_center_px / 1080) * 100}%`)
+                      .map((pt) => {
+                        const vidW = selectedSession?.width || 1920;
+                        const vidH = selectedSession?.height || 1080;
+                        return `${(pt.x_center_px / vidW) * 100}%,${(pt.y_center_px / vidH) * 100}%`;
+                      })
                       .join(" ")}
                   />
-                  {selectedTrack.trajectory.map((pt, i) => (
-                    <circle
-                      key={i}
-                      cx={`${(pt.x_center_px / 1920) * 100}%`}
-                      cy={`${(pt.y_center_px / 1080) * 100}%`}
-                      r="3"
-                      fill="#fbbf24"
-                    />
-                  ))}
+                  {selectedTrack.trajectory.map((pt, i) => {
+                    const vidW = selectedSession?.width || 1920;
+                    const vidH = selectedSession?.height || 1080;
+                    return (
+                      <circle
+                        key={i}
+                        cx={`${(pt.x_center_px / vidW) * 100}%`}
+                        cy={`${(pt.y_center_px / vidH) * 100}%`}
+                        r="3"
+                        fill="#fbbf24"
+                      />
+                    );
+                  })}
                 </svg>
               )}
 
               {/* Empty state if video not active */}
               {activeTracksAtCurrentTime.length === 0 && (
-                <div className="text-center text-slate-500 pointer-events-none">
+                <div className="text-center text-slate-500 pointer-events-none z-0">
                   <Activity className="w-8 h-8 mx-auto mb-1 text-slate-600 animate-pulse" />
                   <p className="text-xs">No active tracks at t={currentTimeSec.toFixed(2)}s</p>
                 </div>
@@ -725,7 +819,7 @@ export default function VideoLabPage() {
                     variant="outline"
                     size="sm"
                     className="border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 w-9 h-9 p-0"
-                    onClick={() => setIsPlaying(!isPlaying)}
+                    onClick={handleTogglePlay}
                   >
                     {isPlaying ? <Pause className="w-4 h-4 text-amber-400" /> : <Play className="w-4 h-4 text-emerald-400" />}
                   </Button>
@@ -763,7 +857,7 @@ export default function VideoLabPage() {
                   {[0.5, 1.0, 2.0].map((spd) => (
                     <button
                       key={spd}
-                      onClick={() => setPlaybackSpeed(spd)}
+                      onClick={() => handleSpeedChange(spd)}
                       className={`text-xs px-2 py-0.5 rounded font-mono transition-colors ${
                         playbackSpeed === spd ? "bg-sky-600 text-white font-bold" : "text-slate-400 hover:text-slate-200"
                       }`}
@@ -821,7 +915,7 @@ export default function VideoLabPage() {
                 <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
                 <input
                   type="text"
-                  placeholder="Ask VisionForge (e.g. 'What objects entered Zone A?', 'Which person stayed longest?')..."
+                  placeholder="Ask VisionForge (e.g. 'What objects entered Zone A?', 'Which person stayed longest?', 'How many cars?')..."
                   value={queryInput}
                   onChange={(e) => setQueryInput(e.target.value)}
                   className="w-full pl-9 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-lg text-sm text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-sky-500"
@@ -837,7 +931,9 @@ export default function VideoLabPage() {
             {queryResult && (
               <div className="mt-3 p-3 rounded-lg bg-slate-950 border border-slate-800/80 space-y-2">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-400 font-mono">DSL: {queryResult.structured_query?.query_type}</span>
+                  <span className="text-slate-400 font-mono">
+                    DSL: {queryResult.structured_query?.query_type || queryResult.result_type || "QUERY"}
+                  </span>
                   <span
                     className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                       queryResult.status === "SUCCESS" ? "bg-emerald-500/20 text-emerald-300" : "bg-amber-500/20 text-amber-300"
@@ -846,20 +942,27 @@ export default function VideoLabPage() {
                     {queryResult.status}
                   </span>
                 </div>
-                <p className="text-xs text-slate-200 font-medium">{queryResult.explanation}</p>
+                <p className="text-xs text-slate-200 font-medium">
+                  {queryResult.summary || queryResult.explanation || queryResult.interpretation_explanation}
+                </p>
 
-                {queryResult.evidence_items && queryResult.evidence_items.length > 0 && (
+                {/* Evidence timeline items with jump-to-time buttons */}
+                {(queryResult.evidence || queryResult.evidence_items || []).length > 0 && (
                   <div className="flex flex-wrap gap-2 pt-1">
-                    {queryResult.evidence_items.map((item: any, i: number) => (
-                      <button
-                        key={i}
-                        onClick={() => seekTo(item.timestamp_sec)}
-                        className="text-[11px] px-2 py-1 bg-slate-900 border border-slate-800 hover:border-sky-500 rounded text-sky-400 font-mono flex items-center gap-1"
-                      >
-                        <Clock className="w-3 h-3" />
-                        Jump to t={item.timestamp_sec.toFixed(1)}s
-                      </button>
-                    ))}
+                    {(queryResult.evidence || queryResult.evidence_items).map((item: any, i: number) => {
+                      const tSec = item.timestamp_sec ?? (item.frame_index ? item.frame_index / 30.0 : 0.0);
+                      return (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => seekTo(tSec)}
+                          className="text-[11px] px-2 py-1 bg-slate-900 border border-slate-800 hover:border-sky-500 rounded text-sky-400 font-mono flex items-center gap-1 transition-colors"
+                        >
+                          <Clock className="w-3 h-3" />
+                          <span>{item.description || item.event_type || `Evidence #${i + 1}`} (t={tSec.toFixed(1)}s)</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>

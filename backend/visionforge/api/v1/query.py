@@ -23,8 +23,14 @@ router = APIRouter(prefix="/query", tags=["Visual Query Layer"])
 
 
 class AskQuestionRequest(BaseModel):
-    query_text: str = Field(description="Natural language question string")
+    query_text: str = Field(default="", description="Natural language question string")
+    question: str | None = Field(default=None, description="Alias for query_text")
+    query: str | None = Field(default=None, description="Alias for query_text")
     run_id: str = Field(description="Target VideoInferenceRun ID")
+
+    @property
+    def prompt_text(self) -> str:
+        return (self.query_text or self.question or self.query or "").strip()
 
 
 class ExecuteStructuredQueryRequest(BaseModel):
@@ -41,7 +47,7 @@ def ask_question(payload: AskQuestionRequest) -> QueryResult:
     """Interpret natural language question into structured DSL, validate, execute against facts, and return evidence."""
     service = get_visual_query_service()
     try:
-        return service.ask(text=payload.query_text, run_id=payload.run_id)
+        return service.ask(text=payload.prompt_text, run_id=payload.run_id)
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
