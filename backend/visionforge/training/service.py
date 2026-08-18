@@ -262,6 +262,7 @@ class TrainingService:
             task=TaskType.DETECTION,
             framework="PyTorch/Ultralytics",
             description=desc,
+            supported_devices=["cpu", "mps", "cuda"],
             device_support=["cpu", "mps", "cuda"],
         )
 

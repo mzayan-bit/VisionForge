@@ -2,8 +2,9 @@
 
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from visionforge.ai.types import InputType, MemoryRequirements, OutputType, TaskType
 
@@ -58,14 +59,30 @@ class InstalledModelMetadata(BaseModel):
     )
 
     # Hardware
+    supported_devices: list[str] = Field(
+        default_factory=lambda: ["cpu", "cuda", "mps"],
+        description="Supported compute acceleration backends (e.g. 'cpu', 'cuda', 'mps')",
+    )
     device_support: list[str] = Field(
         default_factory=lambda: ["cpu", "cuda", "mps"],
-        description="Supported compute backends",
+        description="Supported compute backends (backward-compatible alias)",
     )
     memory_requirements: MemoryRequirements = Field(
         default_factory=MemoryRequirements,
         description="Resource footprint specification",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_devices(cls, data: Any) -> Any:
+        """Ensure supported_devices and device_support are canonicalized from legacy or incoming dicts."""
+        if isinstance(data, dict):
+            devices = data.get("supported_devices") or data.get("device_support")
+            if not devices or not isinstance(devices, list):
+                devices = ["cpu", "cuda", "mps"]
+            data["supported_devices"] = list(devices)
+            data["device_support"] = list(devices)
+        return data
 
     # Source
     source: ModelSource = Field(

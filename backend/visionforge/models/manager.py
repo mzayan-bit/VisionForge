@@ -78,6 +78,7 @@ class ModelManager:
         for meta_file in sorted(meta_dir.glob("*.json")):
             try:
                 meta = validate_metadata_file(meta_file)
+                self._persist_metadata(meta)
                 results.append(meta)
             except ModelValidationError:
                 logger.warning("Skipping corrupted metadata file: %s", meta_file)

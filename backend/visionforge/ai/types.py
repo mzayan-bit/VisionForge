@@ -1,8 +1,9 @@
 """VisionForge AI Core Type Definitions and Metadata Specifications."""
 
 from enum import StrEnum
+from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class TaskType(StrEnum):
@@ -81,12 +82,28 @@ class ModelMetadata(BaseModel):
         default_factory=MemoryRequirements,
         description="Hardware memory footprint specs",
     )
+    supported_devices: list[str] = Field(
+        default_factory=lambda: ["cpu", "cuda", "mps"],
+        description="Supported hardware acceleration backends (e.g. 'cpu', 'cuda', 'mps')",
+    )
     device_support: list[str] = Field(
         default_factory=lambda: ["cpu", "cuda", "mps"],
-        description="Supported hardware acceleration backends",
+        description="Supported hardware acceleration backends (backward-compatible alias)",
     )
     description: str = Field(default="", description="Detailed model capabilities summary")
     status: ModelStatus = Field(
         default=ModelStatus.UNINITIALIZED,
         description="Current lifecycle operational state",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_devices(cls, data: Any) -> Any:
+        """Ensure supported_devices and device_support are canonicalized from legacy or incoming dicts."""
+        if isinstance(data, dict):
+            devices = data.get("supported_devices") or data.get("device_support")
+            if not devices or not isinstance(devices, list):
+                devices = ["cpu", "cuda", "mps"]
+            data["supported_devices"] = list(devices)
+            data["device_support"] = list(devices)
+        return data

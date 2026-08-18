@@ -195,8 +195,43 @@ def test_manager_list_and_stats(manager: ModelManager, sample_metadata: Installe
     installed = manager.list_installed()
     assert len(installed) == 1
     assert installed[0].name == sample_metadata.name
+    assert "cpu" in installed[0].supported_devices
+    assert isinstance(installed[0].supported_devices, list)
 
     status = manager.get_manager_status()
     assert status["status"] == "ready"
     assert status["installed_models"] == 1
     assert status["storage"]["models_count"] == 1
+
+
+def test_model_metadata_device_normalization_contract():
+    """Verify InstalledModelMetadata normalizes legacy and canonical device schemas."""
+    # 1. Canonical instantiation with supported_devices
+    meta1 = InstalledModelMetadata(
+        name="canonical-model",
+        task=TaskType.DETECTION,
+        supported_devices=["cpu", "cuda"],
+    )
+    assert meta1.supported_devices == ["cpu", "cuda"]
+    assert meta1.device_support == ["cpu", "cuda"]
+    dump1 = meta1.model_dump()
+    assert dump1["supported_devices"] == ["cpu", "cuda"]
+
+    # 2. Legacy instantiation with device_support only
+    meta2 = InstalledModelMetadata(
+        name="legacy-model",
+        task=TaskType.DETECTION,
+        device_support=["mps", "cpu"],
+    )
+    assert meta2.supported_devices == ["mps", "cpu"]
+    assert meta2.device_support == ["mps", "cpu"]
+    dump2 = meta2.model_dump()
+    assert dump2["supported_devices"] == ["mps", "cpu"]
+
+    # 3. Default fallback when no device specified
+    meta3 = InstalledModelMetadata(
+        name="default-model",
+        task=TaskType.DETECTION,
+    )
+    assert meta3.supported_devices == ["cpu", "cuda", "mps"]
+    assert meta3.device_support == ["cpu", "cuda", "mps"]
