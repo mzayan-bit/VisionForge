@@ -251,24 +251,48 @@ export default function VideoLabPage() {
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.detail || "Video upload failed");
+        throw new Error(errData.detail || errData.message || "Video upload failed");
       }
 
       const meta = await res.json();
+      const videoId = meta.video_id || meta.data?.video_id;
+      if (!videoId) {
+        throw new Error("No video ID returned from server.");
+      }
 
-      // Automatically trigger tracking run
-      await fetch("/api/v1/video/runs", {
+      // Automatically trigger tracking run with correct schema
+      const runRes = await fetch("/api/v1/video/runs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          video_id: meta.video_id,
-          model_name: "yolo11n.pt",
-          confidence_threshold: 0.25,
+          video_id: videoId,
+          model_id: "yolo11s.pt",
+          sampling_mode: "EVERY_2ND_FRAME",
+          custom_stride: 2,
         }),
       });
 
+      let newRun: any = null;
+      if (runRes.ok) {
+        newRun = await runRes.json();
+      }
+
       await fetchSessions();
-      await fetchRuns();
+      const runsRes = await fetch("/api/v1/video/runs");
+      if (runsRes.ok) {
+        const allRuns = await runsRes.json();
+        setRuns(allRuns);
+        if (newRun) {
+          setSelectedRun(newRun);
+          fetchRegions(videoId);
+          fetchEvents(newRun.run_id);
+        } else if (allRuns.length > 0) {
+          setSelectedRun(allRuns[0]);
+          fetchRegions(allRuns[0].video_id);
+          fetchEvents(allRuns[0].run_id);
+        }
+      }
+
       setIsUploadModalOpen(false);
       setUploadFile(null);
     } catch (err: any) {
