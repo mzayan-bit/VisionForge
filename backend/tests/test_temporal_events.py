@@ -14,7 +14,13 @@ from visionforge.events.schemas import (
     RegionShape,
 )
 from visionforge.main import app
-from visionforge.video.schemas import FrameSamplingConfig, Track, TrajectoryPoint, VideoInferenceRun
+from visionforge.video.schemas import (
+    FrameSamplingConfig,
+    TemporalAnalytics,
+    Track,
+    TrajectoryPoint,
+    VideoInferenceRun,
+)
 
 client = TestClient(app)
 
@@ -258,3 +264,176 @@ def test_temporal_event_service_and_api_endpoints(tmp_path):
     res_exp = client.get(f"/api/v1/events/runs/{run_id}/export")
     assert res_exp.status_code == 200
     assert "event_id,run_id,video_id" in res_exp.json()["data"]
+
+
+def test_zone_crud_move_resize_duplicate_and_persistence(tmp_path):
+    """Verify that zones support create, move, resize, rename, duplicate with offset, and delete."""
+    from visionforge.events.service import TemporalEventService
+
+    svc = TemporalEventService(storage_dir=tmp_path)
+
+    # 1. Create Rectangle Zone
+    reg_rect = svc.create_region(
+        video_id="vid_test_01",
+        name="Loading Bay Alpha",
+        coordinates=[[100.0, 100.0], [500.0, 400.0]],
+        shape_type=RegionShape.RECTANGLE,
+        color="#3b82f6",
+    )
+    assert reg_rect.region_id.startswith("reg_")
+    assert reg_rect.name == "Loading Bay Alpha"
+
+    # 2. Create Polygon Zone
+    poly_coords = [[200.0, 100.0], [600.0, 150.0], [700.0, 500.0], [300.0, 450.0]]
+    reg_poly = svc.create_region(
+        video_id="vid_test_01",
+        name="Restricted Hexagon",
+        coordinates=poly_coords,
+        shape_type=RegionShape.POLYGON,
+        color="#8b5cf6",
+    )
+    assert reg_poly.shape_type == RegionShape.POLYGON
+    assert len(reg_poly.coordinates) == 4
+
+    # 3. Move Zone (Update Coordinates)
+    moved_coords = [[150.0, 150.0], [550.0, 450.0]]
+    updated = svc.update_region(reg_rect.region_id, coordinates=moved_coords)
+    assert updated.coordinates == moved_coords
+
+    # 4. Rename Zone
+    renamed = svc.update_region(reg_rect.region_id, name="Primary Freight Zone")
+    assert renamed.name == "Primary Freight Zone"
+
+    # 5. Duplicate Zone (verifying distinct ID, (Copy) suffix, and +30px offset)
+    dup = svc.duplicate_region(reg_rect.region_id, offset_px=30.0)
+    assert dup.region_id != reg_rect.region_id
+    assert dup.name == "Primary Freight Zone (Copy)"
+    assert dup.coordinates == [[180.0, 180.0], [580.0, 480.0]]
+
+    # 6. Delete Zone
+    svc.delete_region(reg_rect.region_id)
+    remaining = svc.list_regions("vid_test_01")
+    assert len(remaining) == 2
+    assert all(r.region_id != reg_rect.region_id for r in remaining)
+
+    # 7. Reload from disk and verify persistence
+    svc_reloaded = TemporalEventService(storage_dir=tmp_path)
+    svc_reloaded.load_from_disk()
+    assert dup.region_id in svc_reloaded._regions
+    assert reg_poly.region_id in svc_reloaded._regions
+
+
+def test_zone_spatial_analysis_and_negative_test():
+    """Verify zone entry, dwell, exit events and negative test for unvisited zones."""
+    detector = TemporalEventDetector(config=EventRuleConfig(dwell_threshold_sec=2.0))
+
+    # Single track moving through Zone A (at x in [200, 400], y in [200, 400]) from t=0 to t=10
+    # t=0..2: outside (100, 100)
+    # t=3..7: inside (300, 300) -> 5 seconds dwell!
+    # t=8..10: outside (600, 600)
+    traj = []
+    for f in range(11):
+        if f <= 2:
+            x, y = 100.0, 100.0
+        elif 3 <= f <= 7:
+            x, y = 300.0, 300.0
+        else:
+            x, y = 600.0, 600.0
+
+        traj.append(
+            TrajectoryPoint(
+                frame_index=f * 30,
+                timestamp_sec=float(f),
+                x_center_px=x,
+                y_center_px=y,
+                norm_x=x / 1920.0,
+                norm_y=y / 1080.0,
+                width_px=40.0,
+                height_px=40.0,
+                bbox=[x - 20, y - 20, x + 20, y + 20],
+            )
+        )
+
+    track = Track(
+        track_id=1,
+        class_id=0,
+        class_name="person",
+        first_frame=0,
+        last_frame=300,
+        first_timestamp_sec=0.0,
+        last_timestamp_sec=10.0,
+        visibility_duration_sec=10.0,
+        total_distance_px=500.0,
+        avg_speed_px_per_sec=50.0,
+        image_space_velocity_px_s=50.0,
+        avg_confidence=0.90,
+        min_confidence=0.85,
+        max_confidence=0.95,
+        observation_count=11,
+        trajectory=traj,
+    )
+
+    run = VideoInferenceRun(
+        run_id="vrun_zone_test",
+        video_id="vid_test_01",
+        model_id="yolo11s.pt",
+        tracker_name="ByteTrack",
+        sampling_config=FrameSamplingConfig(
+            mode="EVERY_FRAME", sample_interval=1, total_sampled_frames=11
+        ),
+        duration_sec=10.0,
+        fps=30.0,
+        processed_frames=11,
+        total_detections=11,
+        total_tracks=1,
+        tracks=[track],
+        analytics=TemporalAnalytics(
+            total_tracks=1,
+            tracks_by_class={"person": 1},
+            avg_track_duration_sec=10.0,
+            longest_track_duration_sec=10.0,
+            avg_pixel_movement_px=500.0,
+        ),
+        processing_fps=60.0,
+        inference_latency_ms=10.0,
+        tracking_latency_ms=2.0,
+    )
+
+    # Active Zone A (which the track enters and dwells in)
+    zone_a = RegionOfInterest(
+        region_id="reg_zone_a",
+        video_id="vid_test_01",
+        name="Zone A",
+        shape_type=RegionShape.RECTANGLE,
+        coordinates=[[200.0, 200.0], [400.0, 400.0]],
+    )
+
+    # Negative Test Zone B (located far away at [1000, 1000] -> NO objects should ever trigger events)
+    zone_b = RegionOfInterest(
+        region_id="reg_zone_b",
+        video_id="vid_test_01",
+        name="Unvisited Zone B",
+        shape_type=RegionShape.RECTANGLE,
+        coordinates=[[1000.0, 1000.0], [1500.0, 1500.0]],
+    )
+
+    events = detector.detect_events(run, [zone_a, zone_b])
+
+    # 1. Verify Zone A events
+    events_a = [e for e in events if e.event_params.get("region_id") == "reg_zone_a"]
+    assert any(e.event_type == EventType.OBJECT_ENTERED_REGION for e in events_a)
+    assert any(e.event_type == EventType.OBJECT_DWELLED for e in events_a)
+    assert any(e.event_type == EventType.OBJECT_LEFT_REGION for e in events_a)
+
+    entry_evt = next(e for e in events_a if e.event_type == EventType.OBJECT_ENTERED_REGION)
+    assert entry_evt.start_timestamp_sec == 3.0
+
+    dwell_evt = next(e for e in events_a if e.event_type == EventType.OBJECT_DWELLED)
+    assert dwell_evt.duration_sec >= 4.0
+
+    exit_evt = next(e for e in events_a if e.event_type == EventType.OBJECT_LEFT_REGION)
+    assert exit_evt.start_timestamp_sec == 8.0
+
+    # 2. Negative Test Verification: Zone B MUST produce ZERO events!
+    events_b = [e for e in events if e.event_params.get("region_id") == "reg_zone_b"]
+    assert len(events_b) == 0, "Unvisited Zone B must not generate synthetic events!"
