@@ -8,22 +8,30 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 
-// Match the API schema from backend/visionforge/models/metadata.py
+// Match the canonical API schema from backend/visionforge/models/metadata.py
 interface ModelMetadata {
   name: string;
   version: string;
+  author?: string;
+  description?: string;
+  license: string;
   task: string;
   framework: string;
   supported_devices: string[];
-  license: string;
+  device_support?: string[];
   source: {
     provider: string;
-    url?: string;
+    repository?: string;
+    download_url?: string;
+    sha256?: string;
   };
-  install_date: string;
+  status: string;
+  install_path?: string;
   disk_size_bytes?: number;
   disk_size_mb?: number;
-  status: string;
+  installed_at?: string;
+  last_used_at?: string;
+  updated_at?: string;
 }
 
 export default function ModelsPage() {
@@ -36,7 +44,19 @@ export default function ModelsPage() {
         const response = await fetch("/api/v1/models");
         const json = await response.json();
         if (json.success && json.data) {
-          setModels(json.data.models);
+          const rawModels: any[] = json.data.models || [];
+          const normalizedModels: ModelMetadata[] = rawModels.map((m: any) => ({
+            ...m,
+            supported_devices:
+              Array.isArray(m.supported_devices) && m.supported_devices.length > 0
+                ? m.supported_devices
+                : Array.isArray(m.device_support) && m.device_support.length > 0
+                ? m.device_support
+                : ["cpu", "cuda", "mps"],
+            status: m.status || "installed",
+            source: m.source || { provider: "local" },
+          }));
+          setModels(normalizedModels);
         }
       } catch (error) {
         console.error("Failed to fetch models:", error);
@@ -137,7 +157,7 @@ export default function ModelsPage() {
                         </div>
                         <div>
                           <div className="font-medium text-surface-50">{model.name}</div>
-                          <div className="text-xs text-surface-500 capitalize">{model.framework} • {model.source.provider}</div>
+                          <div className="text-xs text-surface-500 capitalize">{model.framework} • {model.source?.provider || "local"}</div>
                         </div>
                       </div>
                     </td>
@@ -161,12 +181,16 @@ export default function ModelsPage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center space-x-2">
-                        {model.supported_devices.map((device) => (
-                          <span key={device} className="flex items-center text-xs px-2 py-0.5 rounded-full bg-surface-800 border border-surface-700 text-surface-300 uppercase">
-                            {getDeviceIcon(device)}
-                            {device}
-                          </span>
-                        ))}
+                        {model.supported_devices && model.supported_devices.length > 0 ? (
+                          model.supported_devices.map((device) => (
+                            <span key={device} className="flex items-center text-xs px-2 py-0.5 rounded-full bg-surface-800 border border-surface-700 text-surface-300 uppercase">
+                              {getDeviceIcon(device)}
+                              {device}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-xs text-surface-500 italic">None</span>
+                        )}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right">

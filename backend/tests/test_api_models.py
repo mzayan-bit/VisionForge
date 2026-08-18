@@ -64,3 +64,33 @@ def test_validate_model_not_found():
     assert data["valid"] is False
     assert len(data["errors"]) > 0
     assert "not installed" in data["errors"][0]
+
+
+def test_list_models_contract_has_supported_devices():
+    """Verify that every model returned by /api/v1/models satisfies the canonical data contract."""
+    response = client.get("/api/v1/models")
+    assert response.status_code == 200
+    json_data = response.json()
+    assert json_data["success"] is True
+    data = json_data["data"]
+    models = data["models"]
+    for model in models:
+        assert "supported_devices" in model, (
+            f"Model '{model.get('name')}' is missing supported_devices"
+        )
+        assert isinstance(model["supported_devices"], list), "supported_devices must be a list"
+        assert len(model["supported_devices"]) > 0, "supported_devices must not be empty"
+        for dev in model["supported_devices"]:
+            assert dev in {
+                "cpu",
+                "cuda",
+                "mps",
+                "tpu",
+                "directml",
+                "openvino",
+                "tensorrt",
+            }, f"Invalid device '{dev}'"
+        assert "name" in model
+        assert "version" in model
+        assert "task" in model
+        assert "framework" in model
