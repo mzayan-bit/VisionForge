@@ -232,3 +232,14 @@ def test_multimodal_api_endpoints():
     res_sug = client.get("/api/v1/multimodal/suggested?page_context=failure_gallery")
     assert res_sug.status_code == 200
     assert len(res_sug.json()) >= 2
+
+    # 6. Nonexistent query returns 404
+    res_404 = client.get("/api/v1/multimodal/queries/nonexistent_query_id")
+    assert res_404.status_code == 404
+
+    # 7. Empty query handled gracefully
+    res_empty = client.post(
+        "/api/v1/multimodal/ask",
+        json={"query": "   "},
+    )
+    assert res_empty.status_code in (200, 400)
