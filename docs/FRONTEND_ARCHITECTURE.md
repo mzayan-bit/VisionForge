@@ -73,16 +73,16 @@ Designed using **Stitch AI MCP**, the interface embodies a **Dark-Mode First**, 
 
 | Component | File Path | Purpose |
 | :--- | :--- | :--- |
-| **`Button`** | [src/components/ui/Button.tsx](file:///Users/zayan/Documents/VisionForge/frontend/src/components/ui/Button.tsx) | Primary, Secondary, Outline, Ghost, Danger button variants |
-| **`Card`** | [src/components/ui/Card.tsx](file:///Users/zayan/Documents/VisionForge/frontend/src/components/ui/Card.tsx) | `Card`, `CardHeader`, `CardBody`, `CardFooter` containers |
-| **`Badge`** | [src/components/ui/Badge.tsx](file:///Users/zayan/Documents/VisionForge/frontend/src/components/ui/Badge.tsx) | Status indicators (Success, Warning, Error, Info, Neutral) with optional live dot |
-| **`PageHeader`** | [src/components/ui/PageHeader.tsx](file:///Users/zayan/Documents/VisionForge/frontend/src/components/ui/PageHeader.tsx) | Page titles, descriptions, breadcrumbs navigation, and action slots |
-| **`SectionHeader`** | [src/components/ui/SectionHeader.tsx](file:///Users/zayan/Documents/VisionForge/frontend/src/components/ui/SectionHeader.tsx) | Subsection title headers with tracking, count badges, and action links |
-| **`Modal`** | [src/components/ui/Modal.tsx](file:///Users/zayan/Documents/VisionForge/frontend/src/components/ui/Modal.tsx) | Accessible dialog backdrop overlay with Escape key handler |
-| **`CommandPalette`** | [src/components/ui/CommandPalette.tsx](file:///Users/zayan/Documents/VisionForge/frontend/src/components/ui/CommandPalette.tsx) | Floating search & command trigger modal (`⌘K`) |
-| **`EmptyState`** | [src/components/ui/EmptyState.tsx](file:///Users/zayan/Documents/VisionForge/frontend/src/components/ui/EmptyState.tsx) | Reusable intentional empty workspace placeholder |
-| **`LoadingState`** | [src/components/ui/LoadingState.tsx](file:///Users/zayan/Documents/VisionForge/frontend/src/components/ui/LoadingState.tsx) | Spinner indicators and `Skeleton` pulse loaders |
-| **`Tabs`** | [src/components/ui/Tabs.tsx](file:///Users/zayan/Documents/VisionForge/frontend/src/components/ui/Tabs.tsx) | Tab list navigation with badges and icons |
+| **`Button`** | [`frontend/src/components/ui/Button.tsx`](../frontend/src/components/ui/Button.tsx) | Primary, Secondary, Outline, Ghost, Danger button variants |
+| **`Card`** | [`frontend/src/components/ui/Card.tsx`](../frontend/src/components/ui/Card.tsx) | `Card`, `CardHeader`, `CardBody`, `CardFooter` containers |
+| **`Badge`** | [`frontend/src/components/ui/Badge.tsx`](../frontend/src/components/ui/Badge.tsx) | Status indicators (Success, Warning, Error, Info, Neutral) with optional live dot |
+| **`PageHeader`** | [`frontend/src/components/ui/PageHeader.tsx`](../frontend/src/components/ui/PageHeader.tsx) | Page titles, descriptions, breadcrumbs navigation, and action slots |
+| **`SectionHeader`** | [`frontend/src/components/ui/SectionHeader.tsx`](../frontend/src/components/ui/SectionHeader.tsx) | Subsection title headers with tracking, count badges, and action links |
+| **`Modal`** | [`frontend/src/components/ui/Modal.tsx`](../frontend/src/components/ui/Modal.tsx) | Accessible dialog backdrop overlay with Escape key handler |
+| **`CommandPalette`** | [`frontend/src/components/ui/CommandPalette.tsx`](../frontend/src/components/ui/CommandPalette.tsx) | Floating search & command trigger modal (`⌘K`) |
+| **`EmptyState`** | [`frontend/src/components/ui/EmptyState.tsx`](../frontend/src/components/ui/EmptyState.tsx) | Reusable intentional empty workspace placeholder |
+| **`LoadingState`** | [`frontend/src/components/ui/LoadingState.tsx`](../frontend/src/components/ui/LoadingState.tsx) | Spinner indicators and `Skeleton` pulse loaders |
+| **`Tabs`** | [`frontend/src/components/ui/Tabs.tsx`](../frontend/src/components/ui/Tabs.tsx) | Tab list navigation with badges and icons |
 
 ---
 

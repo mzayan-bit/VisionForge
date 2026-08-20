@@ -8,20 +8,20 @@ The VisionForge **Dataset Preparation Pipeline** provides reproducible, determin
 
 ```mermaid
 graph TD
-    subgraph Raw Data Layer
+    subgraph RawDataLayer["Raw Data Layer"]
         VM["Visual Memory Index"]
         RAW["Source Image Metadata"]
     end
 
-    subgraph Preparation Pipeline ("visionforge.datasets")
+    subgraph PrepPipeline["Preparation Pipeline (visionforge.datasets)"]
         VAL["Validation Engine (Corrupted / Missing Check)"]
-        LEAK["Data Leakage Prevention (Exact & Near-Duplicate)"]
+        LEAK["Data Leakage Prevention (Exact and Near-Duplicate)"]
         SPLIT["Deterministic Seeded Split (Random / Stratified / Group)"]
         MANIFEST["Manifest Generator (JSON / CSV)"]
         MAT["Dataset Materialization (~/.cache/visionforge/datasets/)"]
     end
 
-    subgraph Output Manifest
+    subgraph OutputManifest["Output Manifest"]
         RES["Prepared Dataset Manifest"]
         TRAIN["Train Split (70%)"]
         VAL_SPLIT["Validation Split (15%)"]

@@ -59,10 +59,10 @@ $$\text{Dataset Intelligence} \longrightarrow \text{Transfer Learning} \longrigh
 
 ```mermaid
 graph TD
-    User["Researcher / Developer"] -->|HTTP / Web UI (Port 3000)| Frontend["VisionForge Frontend (Next.js 16)"]
-    Frontend -->|Reverse Proxy /api/v1/*| Backend["VisionForge Backend API (FastAPI Port 8000)"]
+    User["Researcher / Developer"] -->|"HTTP / Web UI (Port 3000)"| Frontend["VisionForge Frontend (Next.js 16)"]
+    Frontend -->|"Reverse Proxy /api/v1/*"| Backend["VisionForge Backend API (FastAPI Port 8000)"]
     
-    subgraph CoreDomainServices ["Core Application Services Layer"]
+    subgraph CoreDomainServices["Core Application Services Layer"]
         Backend --> DSet["Dataset Intelligence & Quality Engine"]
         Backend --> Train["Training & Transfer Learning Engine (Ultralytics)"]
         Backend --> Eval["Evaluation & Benchmark Engine"]
@@ -72,13 +72,13 @@ graph TD
         Backend --> Exp["Experiment Tracking & Lineage Graph"]
     end
     
-    subgraph PersistenceLayer ["Persistent Storage Layer (Named Volume: visionforge_data)"]
-        DSet -->|Manifests & Splits| FS_Datasets["/data/datasets/"]
-        Train -->|Checkpoints & Weights| FS_Models["/data/models/"]
-        VMem -->|768D Vector Index| FS_Memory["/data/memory/"]
-        Eval -->|Error Records & Benchmarks| FS_Evaluations["/data/evaluations/"]
-        Explain -->|Attribution Cache| FS_Explanations["/data/explanations/"]
-        Exp -->|Lineage Records| FS_Experiments["/data/experiments/"]
+    subgraph PersistenceLayer["Persistent Storage Layer (Named Volume: visionforge_data)"]
+        DSet -->|"Manifests & Splits"| FS_Datasets["/data/datasets/"]
+        Train -->|"Checkpoints & Weights"| FS_Models["/data/models/"]
+        VMem -->|"768D Vector Index"| FS_Memory["/data/memory/"]
+        Eval -->|"Error Records & Benchmarks"| FS_Evaluations["/data/evaluations/"]
+        Explain -->|"Attribution Cache"| FS_Explanations["/data/explanations/"]
+        Exp -->|"Lineage Records"| FS_Experiments["/data/experiments/"]
     end
 ```
 

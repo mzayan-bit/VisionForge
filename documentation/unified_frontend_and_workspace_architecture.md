@@ -38,5 +38,5 @@ VisionForge is a unified **Computer Vision Research Workspace** providing a cohe
 ---
 
 ## 3. Global Command Palette & Shortcuts
-- **`⌘K` / `Ctrl+K`**: Opens the global [CommandPalette](file:///Users/zayan/Documents/VisionForge/frontend/src/components/ui/CommandPalette.tsx) to instantly search and navigate across all workspace sections.
+- **`⌘K` / `Ctrl+K`**: Opens the global [`CommandPalette`](../frontend/src/components/ui/CommandPalette.tsx) to instantly search and navigate across all workspace sections.
 - **Contextual Ask VisionForge**: Directly linked from image predictions, video events, dataset anomalies, and research evaluations.

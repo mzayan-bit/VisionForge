@@ -8,13 +8,13 @@ The VisionForge **Embedding Explorer** provides interactive 2D and 3D visual spa
 
 ```mermaid
 graph TD
-    subgraph Client Layer
+    subgraph ClientLayer["Client Layer"]
         UI["Embedding Explorer (/explorer)"]
         Canvas["Interactive 2D/3D Scatter Canvas"]
         API_Call["REST API (/api/v1/explorer/project)"]
     end
 
-    subgraph Explorer Orchestration ("visionforge.explorer")
+    subgraph ExplorerOrchestration["Explorer Orchestration (visionforge.explorer)"]
         SVC["EmbeddingExplorerService"]
         CACHE["ExplorerCache"]
         REDUCE["Dimensionality Reduction (PCA / t-SNE)"]
@@ -22,7 +22,7 @@ graph TD
         OUTLIER["Outlier Anomaly Scoring"]
     end
 
-    subgraph Storage & Search Integrations
+    subgraph StorageIntegrations["Storage and Search Integrations"]
         MEM["VisualMemoryIndex"]
         SEARCH["VisualSearchService (Find Similar)"]
     end

@@ -8,11 +8,11 @@ The VisionForge **Training Lab** provides reproducible, experiment-tracked train
 
 ```mermaid
 graph TD
-    subgraph Dataset Input
+    subgraph DatasetInput["Dataset Input"]
         MAN["Prepared Dataset Manifest (manifest.json)"]
     end
 
-    subgraph Training Core ("visionforge.training")
+    subgraph TrainingCore["Training Core (visionforge.training)"]
         VAL["Config Validator (epochs, batch, imgsz)"]
         ADAPT["YOLO Data Store Adapter (dataset.yaml)"]
         TRAIN["YOLO PyTorch Trainer (Ultralytics)"]
@@ -21,7 +21,7 @@ graph TD
         SMOKE["Inference Smoke Test Engine"]
     end
 
-    subgraph Output Artifacts
+    subgraph OutputArtifacts["Output Artifacts"]
         REG["ModelManager Registration"]
         UI["Training Lab Workspace (/training)"]
     end

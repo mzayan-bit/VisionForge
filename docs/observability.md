@@ -17,18 +17,18 @@ VisionForge provides a built-in, production-grade observability system designed 
 
 ```mermaid
 graph TD
-    Client["Client / Browser / Orchestrator"] -->|HTTP Request with X-Request-ID| MW["RequestTracingMiddleware"]
+    Client["Client / Browser / Orchestrator"] -->|"HTTP Request with X-Request-ID"| MW["RequestTracingMiddleware"]
     MW --> API["FastAPI Route Handler"]
     API --> Domain["Domain Services (Training, Eval, Inference, Search)"]
     
-    Domain -->|Record Metrics & Jobs| Collector["MetricsCollector (Thread-Safe Ring Buffers)"]
-    Domain -->|On Domain Error| Exc["Centralized Exception Layer"]
+    Domain -->|"Record Metrics and Jobs"| Collector["MetricsCollector (Thread-Safe Ring Buffers)"]
+    Domain -->|"On Domain Error"| Exc["Centralized Exception Layer"]
     
-    Exc -->|Capture Diagnostic Failure| Collector
-    Exc -->|Return Safe Response + Request ID| Client
+    Exc -->|"Capture Diagnostic Failure"| Collector
+    Exc -->|"Return Safe Response + Request ID"| Client
     
-    Collector -->|Expose Prometheus Text| MetricsEndpoint["/metrics & /api/v1/system/metrics"]
-    Collector -->|Expose Telemetry JSON| DiagEndpoint["/api/v1/system/diagnostics & /jobs"]
+    Collector -->|"Expose Prometheus Text"| MetricsEndpoint["/metrics and /api/v1/system/metrics"]
+    Collector -->|"Expose Telemetry JSON"| DiagEndpoint["/api/v1/system/diagnostics and /jobs"]
 ```
 
 ---

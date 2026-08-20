@@ -19,7 +19,7 @@ graph TD
     Ambiguity -- "Missing Spec" --> Clarification["Clarification Prompt (Options)"]
     Ambiguity -- "Deterministic Spec" --> Exec["Multimodal Query Executor"]
 
-    subgraph "Domain Execution Systems"
+    subgraph DomainExecutionSystems["Domain Execution Systems"]
         Exec --> Failures["Evaluation & Failure Gallery"]
         Exec --> Temporal["Video Intelligence & Events"]
         Exec --> Data["Dataset Intelligence"]

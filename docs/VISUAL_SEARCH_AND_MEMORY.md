@@ -8,19 +8,19 @@ The VisionForge **Visual Memory System** and **Visual Search Engine** provide de
 
 ```mermaid
 graph TD
-    subgraph Client Layer
+    subgraph ClientLayer["Client Layer"]
         UI["Visual Search Workbench (/search)"]
         API_Call["REST API Request"]
     end
 
-    subgraph Search Orchestration ("visionforge.search")
+    subgraph SearchOrchestration["Search Orchestration (visionforge.search)"]
         SVC["VisualSearchService"]
         ENGINE["VisualSearchEngine"]
         HIST["SearchHistoryStore"]
         SIM["Similarity Math (similarity.py)"]
     end
 
-    subgraph AI Core & Memory
+    subgraph AICoreMemory["AI Core and Memory"]
         VE["VisionEngine"]
         SIGLIP["SigLIP Embedding Model (768D)"]
         MEM["VisualMemoryIndex"]

@@ -45,7 +45,7 @@ All API endpoints return consistent error responses adhering to the standard env
 ---
 
 ## 5. Live Operational Telemetry (`MetricsCollector`)
-The thread-safe [MetricsCollector](file:///Users/zayan/Documents/VisionForge/backend/visionforge/core/telemetry.py) tracks:
+The thread-safe [`MetricsCollector`](../backend/visionforge/core/telemetry.py) tracks:
 - Total requests and error rates.
 - Rolling average latency and P95 latency percentiles (500-request window).
 - Active vs. queued background jobs.
@@ -63,7 +63,7 @@ The `/api/v1/health` endpoint distinguishes granular subsystem health:
 ---
 
 ## 7. System Diagnostics Dashboard
-Located at [`/settings`](file:///Users/zayan/Documents/VisionForge/frontend/src/app/settings/page.tsx) with Stitch AI MCP UI/UX:
+Located at [`/settings`](../frontend/src/app/settings/page.tsx) with Stitch AI MCP UI/UX:
 - Subsystem health status indicators.
 - Live operational metrics (Requests, Error Rate, Avg/P95 Latency, Uptime).
 - Active background jobs summary.
