@@ -28,7 +28,7 @@ help:
 # ------------------------------------------------------------------------------
 install:
 	@echo "Installing backend dependencies with uv..."
-	@cd backend && uv sync
+	@cd backend && uv sync --all-extras --dev
 	@echo "Installing frontend dependencies with npm..."
 	@cd frontend && npm ci
 
